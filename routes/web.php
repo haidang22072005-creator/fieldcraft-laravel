@@ -9,19 +9,31 @@ use App\Http\Controllers\CartController;
 use App\Http\Controllers\CheckoutController;
 use App\Http\Controllers\StorefrontController;
 use App\Http\Controllers\SettingsController;
+use Illuminate\Foundation\Auth\EmailVerificationRequest;
+use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
 
 Route::get('/', [StorefrontController::class, 'home'])->name('store.home');
 Route::get('/products', [StorefrontController::class, 'products'])->name('store.products');
 Route::post('/cart/sync', [CartController::class, 'sync'])->name('cart.sync');
-Route::get('/checkout', [CheckoutController::class, 'create'])->middleware('auth')->name('checkout');
-Route::post('/checkout', [CheckoutController::class, 'store'])->middleware('auth')->name('checkout.store');
+Route::get('/checkout', [CheckoutController::class, 'create'])->middleware(['auth', 'verified'])->name('checkout');
+Route::post('/checkout', [CheckoutController::class, 'store'])->middleware(['auth', 'verified'])->name('checkout.store');
 Route::view('/admin-preview', 'admin')->name('admin.preview');
 Route::get('/login', [AuthController::class, 'create'])->middleware('guest')->name('login');
 Route::post('/login', [AuthController::class, 'store'])->middleware('guest')->name('login.store');
 Route::get('/register', [AuthController::class, 'registerCreate'])->middleware('guest')->name('register');
 Route::post('/register', [AuthController::class, 'registerStore'])->middleware('guest')->name('register.store');
 Route::post('/logout', [AuthController::class, 'destroy'])->middleware('auth')->name('logout');
+Route::get('/email/verify', fn () => view('auth.verify-email'))->middleware('auth')->name('verification.notice');
+Route::get('/email/verify/{id}/{hash}', function (EmailVerificationRequest $request) {
+    $request->fulfill();
+    return redirect()->route('settings')->with('success', 'Email đã được xác thực.');
+})->middleware(['auth', 'signed', 'throttle:6,1'])->name('verification.verify');
+Route::post('/email/verification-notification', function (Request $request) {
+    if ($request->user()->hasVerifiedEmail()) return redirect()->route('settings');
+    $request->user()->sendEmailVerificationNotification();
+    return back()->with('status', 'Đã gửi lại email xác thực.');
+})->middleware(['auth', 'throttle:6,1'])->name('verification.send');
 Route::get('/settings', [SettingsController::class, 'index'])->name('settings');
 Route::put('/settings/profile', [SettingsController::class, 'updateProfile'])->middleware('auth')->name('settings.profile');
 Route::put('/settings/password', [SettingsController::class, 'updatePassword'])->middleware('auth')->name('settings.password');
@@ -32,7 +44,7 @@ Route::delete('/settings/account', [SettingsController::class, 'destroyAccount']
 Route::post('/settings/addresses', [SettingsController::class, 'storeAddress'])->middleware('auth')->name('settings.addresses.store');
 Route::put('/settings/addresses/{address}', [SettingsController::class, 'updateAddress'])->middleware('auth')->name('settings.addresses.update');
 Route::delete('/settings/addresses/{address}', [SettingsController::class, 'destroyAddress'])->middleware('auth')->name('settings.addresses.destroy');
-Route::get('/purchases', [CheckoutController::class, 'purchases'])->middleware('auth')->name('purchases');
+Route::get('/purchases', [CheckoutController::class, 'purchases'])->middleware(['auth', 'verified'])->name('purchases');
 
 Route::middleware(['auth', 'role:super-admin'])->prefix('admin')->name('admin.')->group(function () {
     Route::get('/', [OrderController::class, 'dashboard'])->name('dashboard');

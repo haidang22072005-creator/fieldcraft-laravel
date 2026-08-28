@@ -27,6 +27,10 @@ class AuthController extends Controller
         }
 
         $request->session()->regenerate();
+        if (! $request->user()->hasVerifiedEmail()) {
+            return redirect()->route('verification.notice');
+        }
+
         return $request->user()->role === 'super-admin'
             ? redirect()->intended(route('admin.dashboard'))
             : redirect()->intended(route('settings'));
@@ -40,7 +44,8 @@ class AuthController extends Controller
         $user = User::create([...$data, 'role'=>'customer']);
         Auth::login($user);
         $request->session()->regenerate();
-        return redirect()->route('settings')->with('success', 'Đăng ký thành công. Chào mừng bạn đến với Fieldcraft!');
+        $user->sendEmailVerificationNotification();
+        return redirect()->route('verification.notice');
     }
 
     public function settings(Request $request): View { return view('settings', ['user'=>$request->user()]); }
