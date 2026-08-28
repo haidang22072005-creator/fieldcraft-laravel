@@ -8,6 +8,7 @@ use App\Models\Order;
 use App\Models\OrderItem;
 use App\Models\Product;
 use App\Models\ProductVariant;
+use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Str;
@@ -36,7 +37,7 @@ class CreateOrderTest extends TestCase
     {
         return app(CreateOrder::class)->handle(
             new Collection([['product_variant_id'=>$variant->id,'quantity'=>$quantity]]),
-            ['payment_method'=>'cod','payment_status'=>'pending','status'=>'pending','shipping_fee'=>0,'coupon_code'=>$couponCode]
+            ['user_id'=>User::factory()->create()->id,'payment_method'=>'cod','payment_status'=>'pending','status'=>'pending','shipping_fee'=>0,'coupon_code'=>$couponCode]
         );
     }
 

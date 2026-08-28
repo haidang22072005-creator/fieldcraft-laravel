@@ -4,6 +4,7 @@ namespace App\Actions;
 
 use App\Models\Order;
 use App\Models\Coupon;
+use App\Models\CouponUsage;
 use App\Models\ProductVariant;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
@@ -33,7 +34,8 @@ class CreateOrder
 
             [$coupon, $discount] = $this->lockAndValidateCoupon(
                 $attributes['coupon_code'] ?? null,
-                $subtotal
+                $subtotal,
+                $attributes['user_id'] ?? null
             );
 
             $order = Order::query()->create([
@@ -67,13 +69,21 @@ class CreateOrder
                 ]);
             }
 
-            $coupon?->increment('used_count');
+            if ($coupon) {
+                CouponUsage::query()->create([
+                    'coupon_id' => $coupon->id,
+                    'user_id' => $order->user_id,
+                    'order_id' => $order->id,
+                    'used_at' => now(),
+                ]);
+                $coupon->increment('used_count');
+            }
 
             return $order;
         });
     }
 
-    private function lockAndValidateCoupon(?string $code, int $subtotal): array
+    private function lockAndValidateCoupon(?string $code, int $subtotal, ?int $userId): array
     {
         if (blank($code)) {
             return [null, 0];
@@ -85,10 +95,15 @@ class CreateOrder
             ->first();
 
         $valid = $coupon
+            && $userId
             && $coupon->is_active
             && (! $coupon->expires_at || $coupon->expires_at->isFuture())
             && $subtotal >= $coupon->minimum_order_value
             && ($coupon->usage_limit === null || $coupon->used_count < $coupon->usage_limit);
+
+        if ($valid && $coupon->per_user_limit !== null) {
+            $valid = $coupon->usages()->where('user_id', $userId)->count() < $coupon->per_user_limit;
+        }
 
         if (! $valid) {
             throw ValidationException::withMessages(['coupon' => 'Mã giảm giá không hợp lệ hoặc đã hết lượt sử dụng.']);

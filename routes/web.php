@@ -24,7 +24,6 @@ Route::delete('/cart/items/{variant}', [CartController::class, 'remove'])->name(
 Route::delete('/cart', [CartController::class, 'clear'])->name('cart.clear');
 Route::get('/checkout', [CheckoutController::class, 'create'])->middleware(['auth', 'verified'])->name('checkout');
 Route::post('/checkout', [CheckoutController::class, 'store'])->middleware(['auth', 'verified'])->name('checkout.store');
-Route::view('/admin-preview', 'admin')->name('admin.preview');
 Route::get('/login', [AuthController::class, 'create'])->middleware('guest')->name('login');
 Route::post('/login', [AuthController::class, 'store'])->middleware('guest')->name('login.store');
 Route::get('/register', [AuthController::class, 'registerCreate'])->middleware('guest')->name('register');
