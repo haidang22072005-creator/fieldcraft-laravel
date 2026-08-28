@@ -6,6 +6,7 @@ use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use App\Models\User;
+use App\Services\CartManager;
 use Illuminate\View\View;
 
 class AuthController extends Controller
@@ -15,7 +16,7 @@ class AuthController extends Controller
         return view('auth.login');
     }
 
-    public function store(Request $request): RedirectResponse
+    public function store(Request $request, CartManager $cart): RedirectResponse
     {
         $credentials = $request->validate([
             'email' => ['required', 'email'],
@@ -27,6 +28,7 @@ class AuthController extends Controller
         }
 
         $request->session()->regenerate();
+        $cart->mergeGuestCart($request);
         if (! $request->user()->hasVerifiedEmail()) {
             return redirect()->route('verification.notice');
         }
@@ -38,12 +40,13 @@ class AuthController extends Controller
 
     public function registerCreate(): View { return view('auth.register'); }
 
-    public function registerStore(Request $request): RedirectResponse
+    public function registerStore(Request $request, CartManager $cart): RedirectResponse
     {
         $data = $request->validate(['name'=>['required','string','max:100'],'email'=>['required','email','unique:users'],'password'=>['required','string','min:8','confirmed']]);
         $user = User::create([...$data, 'role'=>'customer']);
         Auth::login($user);
         $request->session()->regenerate();
+        $cart->mergeGuestCart($request);
         $user->sendEmailVerificationNotification();
         return redirect()->route('verification.notice');
     }

@@ -3,7 +3,9 @@
 namespace App\Http\Controllers;
 
 use App\Models\Product;
+use App\Services\CartManager;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\View\View;
 
@@ -30,6 +32,14 @@ class StorefrontController extends Controller
                     'badge' => 'Chính hãng',
                     'color' => $variant?->color ?? 'Tiêu chuẩn',
                     'image' => str_starts_with((string) $path, 'http') ? $path : asset('storage/'.$path),
+                    'variants' => $product->variants->map(fn ($item) => [
+                        'id' => $item->id,
+                        'sku' => $item->sku,
+                        'color' => $item->color,
+                        'size' => $item->size,
+                        'price' => $item->price,
+                        'stock' => $item->stock,
+                    ])->values()->all(),
                 ];
             })->all();
         }
@@ -44,9 +54,20 @@ class StorefrontController extends Controller
         ];
     }
 
-    public function home(): View
+    public function home(Request $request, CartManager $cart): View
     {
-        return view('storefront', ['products' => $this->catalogue()]);
+        $items = $request->user()?->role === 'super-admin' ? collect() : $cart->items($request);
+        $cartLines = $items->map(function (array $line) {
+            $variant = $line['variant'];
+            $path = $variant->product->images->first()?->path;
+            return [
+                'key' => (string) $variant->id, 'variantId' => $variant->id, 'name' => $variant->product->name,
+                'color' => $variant->color, 'size' => $variant->size, 'price' => $variant->price,
+                'qty' => $line['quantity'], 'stock' => $variant->stock,
+                'image' => str_starts_with((string) $path, 'http') ? $path : asset('storage/'.$path),
+            ];
+        })->values();
+        return view('storefront', ['products' => $this->catalogue(), 'cartLines' => $cartLines]);
     }
 
     public function products(): JsonResponse

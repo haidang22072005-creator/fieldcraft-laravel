@@ -15,7 +15,13 @@ use Illuminate\Support\Facades\Route;
 
 Route::get('/', [StorefrontController::class, 'home'])->name('store.home');
 Route::get('/products', [StorefrontController::class, 'products'])->name('store.products');
-Route::post('/cart/sync', [CartController::class, 'sync'])->name('cart.sync');
+Route::get('/cart', [CartController::class, 'index'])->name('cart.index');
+Route::post('/cart/items', [CartController::class, 'add'])->name('cart.add');
+Route::put('/cart/items/{variant}', [CartController::class, 'update'])->name('cart.update');
+Route::patch('/cart/items/{variant}/increase', [CartController::class, 'increase'])->name('cart.increase');
+Route::patch('/cart/items/{variant}/decrease', [CartController::class, 'decrease'])->name('cart.decrease');
+Route::delete('/cart/items/{variant}', [CartController::class, 'remove'])->name('cart.remove');
+Route::delete('/cart', [CartController::class, 'clear'])->name('cart.clear');
 Route::get('/checkout', [CheckoutController::class, 'create'])->middleware(['auth', 'verified'])->name('checkout');
 Route::post('/checkout', [CheckoutController::class, 'store'])->middleware(['auth', 'verified'])->name('checkout.store');
 Route::view('/admin-preview', 'admin')->name('admin.preview');
