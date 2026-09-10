@@ -19,25 +19,35 @@ class CartManager
     public function items(Request $request): Collection
     {
         $this->ensureCanShop($request);
-        $quantities = $request->user()
-            ? $this->userCart($request)->items()->pluck('quantity', 'product_variant_id')
-            : collect($request->session()->get('cart', []))->pluck('quantity', 'product_variant_id');
+        $storedItems = $request->user()
+            ? $this->userCart($request)->items()->get()->keyBy('product_variant_id')
+            : collect($request->session()->get('cart', []))->keyBy('product_variant_id');
 
-        if ($quantities->isEmpty()) {
+        if ($storedItems->isEmpty()) {
             return collect();
         }
 
-        $variants = ProductVariant::with(['product.images'])->whereIn('id', $quantities->keys())->get()->keyBy('id');
+        $variants = ProductVariant::with(['product.images'])->whereIn('id', $storedItems->keys())->get()->keyBy('id');
 
-        return $quantities->map(function (int $quantity, int|string $variantId) use ($variants) {
+        return $storedItems->map(function ($stored, int|string $variantId) use ($variants) {
             $variant = $variants->get((int) $variantId);
+            $quantity = (int) (is_array($stored) ? $stored['quantity'] : $stored->quantity);
+            $requestedSelection = (bool) (is_array($stored) ? ($stored['selected'] ?? true) : $stored->selected_for_checkout);
+            $available = $variant && $variant->stock >= $quantity && $variant->stock > 0;
             return $variant ? [
                 'variant' => $variant,
                 'quantity' => $quantity,
-                'available' => $variant->stock >= $quantity && $variant->stock > 0,
+                'available' => $available,
+                'selection_requested' => $requestedSelection,
+                'selected' => $requestedSelection && $available,
                 'subtotal' => $variant->price * $quantity,
             ] : null;
         })->filter()->values();
+    }
+
+    public function selectedItems(Request $request): Collection
+    {
+        return $this->items($request)->where('selected', true)->values();
     }
 
     public function count(Request $request): int
@@ -55,14 +65,16 @@ class CartManager
             $item = $cart->items()->firstOrNew(['product_variant_id' => $variant->id]);
             $newQuantity = ($item->exists ? $item->quantity : 0) + $quantity;
             $this->assertQuantity($variant, $newQuantity);
-            $item->fill(['quantity' => $newQuantity, 'selected_for_checkout' => true])->save();
+            $item->fill(['quantity' => $newQuantity]);
+            if (! $item->exists) $item->selected_for_checkout = true;
+            $item->save();
             return;
         }
 
         $items = collect($request->session()->get('cart', []))->keyBy('product_variant_id');
         $newQuantity = (int) ($items->get($variant->id)['quantity'] ?? 0) + $quantity;
         $this->assertQuantity($variant, $newQuantity);
-        $items->put($variant->id, ['product_variant_id' => $variant->id, 'quantity' => $newQuantity]);
+        $items->put($variant->id, ['product_variant_id' => $variant->id, 'quantity' => $newQuantity, 'selected' => $items->get($variant->id)['selected'] ?? true]);
         $request->session()->put('cart', $items->values()->all());
     }
 
@@ -74,14 +86,14 @@ class CartManager
         if ($request->user()) {
             $this->userCart($request)->items()->updateOrCreate(
                 ['product_variant_id' => $variant->id],
-                ['quantity' => $quantity, 'selected_for_checkout' => true]
+                ['quantity' => $quantity]
             );
             return;
         }
 
         $items = collect($request->session()->get('cart', []))->keyBy('product_variant_id');
         abort_unless($items->has($variant->id), 404);
-        $items->put($variant->id, ['product_variant_id' => $variant->id, 'quantity' => $quantity]);
+        $items->put($variant->id, ['product_variant_id' => $variant->id, 'quantity' => $quantity, 'selected' => $items->get($variant->id)['selected'] ?? true]);
         $request->session()->put('cart', $items->values()->all());
     }
 
@@ -118,6 +130,44 @@ class CartManager
             : $request->session()->forget('cart');
     }
 
+    public function select(Request $request, ProductVariant $variant, bool $selected): void
+    {
+        $this->ensureCanShop($request);
+        $line = $this->items($request)->first(fn (array $item) => $item['variant']->is($variant));
+        abort_unless($line, 404);
+        if ($selected && ! $line['available']) {
+            throw ValidationException::withMessages(['stock' => 'Số lượng vượt quá tồn kho.']);
+        }
+        if ($request->user()) {
+            $this->userCart($request)->items()->where('product_variant_id', $variant->id)->update(['selected_for_checkout' => $selected]);
+            return;
+        }
+        $items = collect($request->session()->get('cart', []))->keyBy('product_variant_id');
+        $item = $items->get($variant->id);
+        $item['selected'] = $selected;
+        $items->put($variant->id, $item);
+        $request->session()->put('cart', $items->values()->all());
+    }
+
+    public function selectAll(Request $request, bool $selected): void
+    {
+        foreach ($this->items($request) as $line) {
+            $this->select($request, $line['variant'], $selected && $line['available']);
+        }
+    }
+
+    public function removePurchased(Request $request, Collection $purchasedItems): void
+    {
+        $this->ensureCanShop($request);
+        $variantIds = $purchasedItems->pluck('variant.id')->map(fn ($id) => (int) $id);
+        if ($request->user()) {
+            $this->userCart($request)->items()->whereIn('product_variant_id', $variantIds)->delete();
+            return;
+        }
+        $items = collect($request->session()->get('cart', []))->reject(fn (array $item) => $variantIds->contains((int) $item['product_variant_id']));
+        $request->session()->put('cart', $items->values()->all());
+    }
+
     public function mergeGuestCart(Request $request): void
     {
         if (! $request->user() || $request->user()->role !== 'customer') {
@@ -135,7 +185,7 @@ class CartManager
                 if (! $variant || $variant->stock < 1) continue;
                 $item = $cart->items()->lockForUpdate()->firstOrNew(['product_variant_id' => $variant->id]);
                 $item->quantity = min($variant->stock, (int) $item->quantity + (int) $guestItem['quantity']);
-                $item->selected_for_checkout = true;
+                $item->selected_for_checkout = (bool) $item->selected_for_checkout || (bool) ($guestItem['selected'] ?? true);
                 $item->save();
             }
         });

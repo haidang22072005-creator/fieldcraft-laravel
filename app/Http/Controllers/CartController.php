@@ -16,7 +16,12 @@ class CartController extends Controller
     public function index(Request $request): View
     {
         $items = $this->cart->items($request);
-        return view('cart.index', ['items' => $items, 'subtotal' => $items->sum('subtotal')]);
+        return view('cart.index', [
+            'items' => $items,
+            'subtotal' => $items->where('available', true)->sum('subtotal'),
+            'selectedCount' => $items->where('selected', true)->sum('quantity'),
+            'selectedTotal' => $items->where('selected', true)->sum('subtotal'),
+        ]);
     }
 
     public function add(Request $request): RedirectResponse|JsonResponse
@@ -57,11 +62,31 @@ class CartController extends Controller
         return $this->response($request, 'Đã xóa toàn bộ giỏ hàng.');
     }
 
+    public function select(Request $request, ProductVariant $variant): RedirectResponse|JsonResponse
+    {
+        $data = $request->validate(['selected' => ['required', 'boolean']]);
+        $this->cart->select($request, $variant, $data['selected']);
+        return $this->response($request, 'Đã cập nhật giỏ hàng.');
+    }
+
+    public function selectAll(Request $request): RedirectResponse|JsonResponse
+    {
+        $data = $request->validate(['selected' => ['required', 'boolean']]);
+        $this->cart->selectAll($request, $data['selected']);
+        return $this->response($request, 'Đã cập nhật giỏ hàng.');
+    }
+
     private function response(Request $request, string $message): RedirectResponse|JsonResponse
     {
         if ($request->expectsJson()) {
             $items = $this->cart->items($request);
-            return response()->json(['message' => $message, 'count' => $items->sum('quantity'), 'subtotal' => $items->sum('subtotal')]);
+            return response()->json([
+                'message' => $message,
+                'count' => $items->sum('quantity'),
+                'subtotal' => $items->where('available', true)->sum('subtotal'),
+                'selected_count' => $items->where('selected', true)->sum('quantity'),
+                'selected_total' => $items->where('selected', true)->sum('subtotal'),
+            ]);
         }
         return back()->with('success', $message);
     }

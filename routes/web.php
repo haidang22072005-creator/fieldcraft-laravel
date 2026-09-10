@@ -20,6 +20,8 @@ Route::post('/cart/items', [CartController::class, 'add'])->name('cart.add');
 Route::put('/cart/items/{variant}', [CartController::class, 'update'])->name('cart.update');
 Route::patch('/cart/items/{variant}/increase', [CartController::class, 'increase'])->name('cart.increase');
 Route::patch('/cart/items/{variant}/decrease', [CartController::class, 'decrease'])->name('cart.decrease');
+Route::patch('/cart/items/{variant}/selection', [CartController::class, 'select'])->name('cart.select');
+Route::patch('/cart/selection', [CartController::class, 'selectAll'])->name('cart.select-all');
 Route::delete('/cart/items/{variant}', [CartController::class, 'remove'])->name('cart.remove');
 Route::delete('/cart', [CartController::class, 'clear'])->name('cart.clear');
 Route::get('/checkout', [CheckoutController::class, 'create'])->middleware(['auth', 'verified'])->name('checkout');

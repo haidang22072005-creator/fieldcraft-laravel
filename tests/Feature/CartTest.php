@@ -27,7 +27,7 @@ class CartTest extends TestCase
     {
         $variant = $this->variant();
         $this->add($variant, 2)->assertOk()->assertJson(['count' => 2]);
-        $this->assertEquals([['product_variant_id' => $variant->id, 'quantity' => 2]], session('cart'));
+        $this->assertEquals([['product_variant_id' => $variant->id, 'quantity' => 2, 'selected' => true]], session('cart'));
     }
 
     public function test_same_variant_combines_quantity(): void

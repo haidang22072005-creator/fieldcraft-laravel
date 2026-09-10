@@ -50,6 +50,14 @@ class CreateOrder
                 'payment_method' => $attributes['payment_method'],
                 'payment_status' => $attributes['payment_status'] ?? 'pending',
                 'status' => $attributes['status'] ?? 'pending',
+                'recipient_name' => $attributes['recipient_name'] ?? null,
+                'recipient_phone' => $attributes['recipient_phone'] ?? null,
+                'recipient_email' => $attributes['recipient_email'] ?? null,
+                'province' => $attributes['province'] ?? null,
+                'district' => $attributes['district'] ?? null,
+                'ward' => $attributes['ward'] ?? null,
+                'address_line' => $attributes['address_line'] ?? null,
+                'note' => $attributes['note'] ?? null,
             ]);
 
             $order->forceFill([

@@ -63,7 +63,7 @@ class StorefrontController extends Controller
             return [
                 'key' => (string) $variant->id, 'variantId' => $variant->id, 'name' => $variant->product->name,
                 'color' => $variant->color, 'size' => $variant->size, 'price' => $variant->price,
-                'qty' => $line['quantity'], 'stock' => $variant->stock,
+                'qty' => $line['quantity'], 'stock' => $variant->stock, 'selected' => $line['selected'], 'available' => $line['available'],
                 'image' => str_starts_with((string) $path, 'http') ? $path : asset('storage/'.$path),
             ];
         })->values();
