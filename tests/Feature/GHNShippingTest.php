@@ -91,6 +91,8 @@ class GHNShippingTest extends TestCase
             return $request->url() === config('services.ghn.base_url').'/v2/shipping-order/fee'
                 && $request['weight'] === 400
                 && $request['from_district_id'] === 3440
+                && $request['from_ward_code'] === '13004'
+                && $request['service_type_id'] === 2
                 && $request['to_district_id'] === 1600
                 && ! array_key_exists('subtotal', $request->data());
         });

@@ -6,6 +6,7 @@ use App\Exceptions\GHNException;
 use Illuminate\Http\Client\PendingRequest;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Str;
 use Throwable;
 
 class GHNService
@@ -37,6 +38,7 @@ class GHNService
         $payload = array_merge([
             'service_type_id' => (int) config('services.ghn.service_type_id', 2),
             'from_district_id' => (int) config('services.ghn.from_district_id'),
+            'from_ward_code' => (string) config('services.ghn.from_ward_code'),
             'to_district_id' => $toDistrictId,
             'to_ward_code' => $toWardCode,
             'weight' => max(1, $weight),
@@ -61,7 +63,10 @@ class GHNService
 
     private function request(string $method, string $endpoint, array $payload = [], bool $requiresOrigin = false): array
     {
-        if (! $this->isConfigured() || ($requiresOrigin && ! filled(config('services.ghn.from_district_id')))) {
+        if (! $this->isConfigured() || ($requiresOrigin && (
+            ! filled(config('services.ghn.from_district_id')) ||
+            ! filled(config('services.ghn.from_ward_code'))
+        ))) {
             throw new GHNException('GHN shipping is not configured.');
         }
 
@@ -75,7 +80,13 @@ class GHNService
             $ghnCode = $body['code'] ?? null;
 
             if ($response->failed() || ($ghnCode !== null && (int) $ghnCode !== 200)) {
-                $this->logFailure($endpoint, $response->status(), $ghnCode);
+                $this->logFailure(
+                    $endpoint,
+                    $response->status(),
+                    $ghnCode,
+                    $body['message'] ?? null,
+                    $body['code_message'] ?? null,
+                );
                 throw new GHNException('GHN request failed.', $response->status());
             }
 
@@ -104,12 +115,33 @@ class GHNService
             ->withOptions(['verify' => (bool) config('services.ghn.verify_ssl', false)]);
     }
 
-    private function logFailure(string $endpoint, int $status, mixed $ghnCode): void
+    private function logFailure(string $endpoint, int $status, mixed $ghnCode, mixed $message, mixed $codeMessage): void
     {
         Log::warning('GHN API returned an error.', [
             'endpoint' => $endpoint,
             'http_status' => $status,
             'ghn_code' => $ghnCode,
+            'ghn_message' => $this->safeLogValue($message),
+            'ghn_code_message' => $this->safeLogValue($codeMessage),
         ]);
+    }
+
+    private function safeLogValue(mixed $value): ?string
+    {
+        if (! is_scalar($value)) {
+            return null;
+        }
+
+        $message = trim((string) $value);
+        $token = (string) config('services.ghn.token');
+        if ($token !== '') {
+            $message = str_replace($token, '[redacted]', $message);
+        }
+
+        if (preg_match('/(?:token|authorization|credential|password|secret)\s*[:=]/i', $message)) {
+            return '[redacted]';
+        }
+
+        return Str::limit($message, 200);
     }
 }
