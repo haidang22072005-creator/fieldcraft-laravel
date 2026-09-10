@@ -9,6 +9,13 @@ class Product extends Model
 {
     protected $guarded = [];
 
+    protected function casts(): array
+    {
+        return [
+            'weight' => 'integer',
+        ];
+    }
+
     public function variants(): HasMany
     {
         return $this->hasMany(ProductVariant::class);

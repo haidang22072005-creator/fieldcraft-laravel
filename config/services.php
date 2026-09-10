@@ -35,4 +35,16 @@ return [
         ],
     ],
 
+    'ghn' => [
+        'base_url' => env('GHN_BASE_URL', 'https://dev-online-gateway.ghn.vn/shiip/public-api'),
+        'token' => env('GHN_TOKEN'),
+        'shop_id' => env('GHN_SHOP_ID'),
+        'verify_ssl' => filter_var(env('GHN_VERIFY_SSL', false), FILTER_VALIDATE_BOOL),
+        'from_district_id' => env('GHN_FROM_DISTRICT_ID'),
+        'default_weight' => (int) env('GHN_DEFAULT_WEIGHT', 200),
+        'timeout' => (int) env('GHN_TIMEOUT', 15),
+        'service_type_id' => (int) env('GHN_SERVICE_TYPE_ID', 2),
+        'required_note' => env('GHN_REQUIRED_NOTE', 'KHONGCHOXEMHANG'),
+    ],
+
 ];

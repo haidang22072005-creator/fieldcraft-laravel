@@ -7,6 +7,7 @@ use App\Http\Controllers\Admin\ProductController;
 use App\Http\Controllers\AuthController;
 use App\Http\Controllers\CartController;
 use App\Http\Controllers\CheckoutController;
+use App\Http\Controllers\LocationController;
 use App\Http\Controllers\StorefrontController;
 use App\Http\Controllers\SettingsController;
 use Illuminate\Foundation\Auth\EmailVerificationRequest;
@@ -26,6 +27,12 @@ Route::delete('/cart/items/{variant}', [CartController::class, 'remove'])->name(
 Route::delete('/cart', [CartController::class, 'clear'])->name('cart.clear');
 Route::get('/checkout', [CheckoutController::class, 'create'])->middleware(['auth', 'verified'])->name('checkout');
 Route::post('/checkout', [CheckoutController::class, 'store'])->middleware(['auth', 'verified'])->name('checkout.store');
+Route::middleware(['auth', 'verified'])->prefix('locations')->name('locations.')->group(function () {
+    Route::get('/provinces', [LocationController::class, 'provinces'])->name('provinces');
+    Route::get('/districts/{provinceId}', [LocationController::class, 'districts'])->whereNumber('provinceId')->name('districts');
+    Route::get('/wards/{districtId}', [LocationController::class, 'wards'])->whereNumber('districtId')->name('wards');
+    Route::post('/calculate-fee', [LocationController::class, 'calculateFee'])->name('calculate-fee');
+});
 Route::get('/login', [AuthController::class, 'create'])->middleware('guest')->name('login');
 Route::post('/login', [AuthController::class, 'store'])->middleware('guest')->name('login.store');
 Route::get('/register', [AuthController::class, 'registerCreate'])->middleware('guest')->name('register');
