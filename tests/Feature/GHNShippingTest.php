@@ -20,8 +20,15 @@ class GHNShippingTest extends TestCase
     {
         parent::setUp();
         config()->set('services.ghn.token', 'test-token');
-        config()->set('services.ghn.shop_id', '12345');
-        config()->set('services.ghn.from_district_id', 1450);
+        config()->set('services.ghn.shop_id', '219637');
+        config()->set('services.ghn.from_name', 'Fieldcraft Test Sender');
+        config()->set('services.ghn.from_phone', '0900000000');
+        config()->set('services.ghn.from_address', '1 Test Street');
+        config()->set('services.ghn.from_province_name', 'Hà Nội');
+        config()->set('services.ghn.from_district_name', 'Quận Nam Từ Liêm');
+        config()->set('services.ghn.from_ward_name', 'Phường Mỹ Đình 1');
+        config()->set('services.ghn.from_district_id', 3440);
+        config()->set('services.ghn.from_ward_code', '13004');
         config()->set('services.ghn.default_weight', 200);
     }
 
@@ -83,6 +90,7 @@ class GHNShippingTest extends TestCase
         Http::assertSent(function ($request) {
             return $request->url() === config('services.ghn.base_url').'/v2/shipping-order/fee'
                 && $request['weight'] === 400
+                && $request['from_district_id'] === 3440
                 && $request['to_district_id'] === 1600
                 && ! array_key_exists('subtotal', $request->data());
         });
@@ -121,6 +129,16 @@ class GHNShippingTest extends TestCase
             'user_id' => $user->id, 'subtotal' => 100000, 'shipping_fee' => 35000, 'total' => 135000,
             'ghn_order_code' => 'GHN123', 'ghn_total_fee' => 35000, 'shipping_status' => 'created',
         ]);
+        Http::assertSent(function ($request) {
+            return str_ends_with($request->url(), '/v2/shipping-order/create')
+                && $request['from_name'] === 'Fieldcraft Test Sender'
+                && $request['from_phone'] === '0900000000'
+                && $request['from_address'] === '1 Test Street'
+                && $request['from_province_name'] === 'Hà Nội'
+                && $request['from_district_name'] === 'Quận Nam Từ Liêm'
+                && $request['from_ward_name'] === 'Phường Mỹ Đình 1'
+                && $request['from_district_id'] === 3440;
+        });
     }
 
     public function test_failed_waybill_leaves_local_order_valid(): void

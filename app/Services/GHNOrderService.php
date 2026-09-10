@@ -53,6 +53,12 @@ class GHNOrderService
         })->values()->all();
 
         return [
+            'from_name' => config('services.ghn.from_name'),
+            'from_phone' => config('services.ghn.from_phone'),
+            'from_address' => config('services.ghn.from_address'),
+            'from_province_name' => config('services.ghn.from_province_name'),
+            'from_district_name' => config('services.ghn.from_district_name'),
+            'from_ward_name' => config('services.ghn.from_ward_name'),
             'from_district_id' => (int) config('services.ghn.from_district_id'),
             'to_name' => $order->recipient_name,
             'to_phone' => $order->recipient_phone,
