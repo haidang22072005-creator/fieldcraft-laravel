@@ -203,11 +203,17 @@
             margin-top: 5px;
         }
 
-        /* Payment COD */
+        /* Payment Methods */
         .payment-section {
             margin-top: 24px;
             padding-top: 22px;
             border-top: 1px solid var(--border-panel);
+        }
+        .payment-cards {
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+            margin-top: 14px;
         }
         .pay-card {
             display: flex;
@@ -218,10 +224,20 @@
             border-radius: 8px;
             padding: 16px 18px;
             cursor: pointer;
-            transition: border-color .2s;
+            min-height: 52px;
+            transition: border-color .18s ease, background .18s ease, box-shadow .18s ease;
         }
         .pay-card:hover {
+            border-color: #2e5941;
+        }
+        .pay-card.selected {
+            background: #143323;
             border-color: var(--neon-green);
+            box-shadow: 0 0 0 1px var(--neon-green), inset 0 0 14px rgba(202, 255, 57, 0.06);
+        }
+        .pay-card:focus-within {
+            outline: 2px solid var(--neon-green);
+            outline-offset: 2px;
         }
         .pay-radio {
             margin-top: 3px;
@@ -231,6 +247,15 @@
             cursor: pointer;
             flex-shrink: 0;
         }
+        .pay-body {
+            flex: 1;
+        }
+        .pay-title-row {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            margin-bottom: 4px;
+        }
         .pay-body strong {
             display: block;
             color: var(--text-main);
@@ -238,10 +263,27 @@
             font-weight: 800;
             margin-bottom: 4px;
         }
+        .pay-title-row strong {
+            margin-bottom: 0;
+        }
         .pay-body span {
             color: var(--text-muted);
             font-size: 12px;
             line-height: 1.5;
+        }
+        .momo-badge {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            padding: 2px 6px;
+            border-radius: 4px;
+            background: #a50064;
+            color: #ffffff;
+            font-weight: 800;
+            font-size: 10px;
+            font-family: 'DM Mono', monospace;
+            letter-spacing: .04em;
+            flex-shrink: 0;
         }
 
         /* Summary Sidebar */
@@ -521,20 +563,25 @@
 
                 <div class="payment-section">
                     <h2>Phương thức thanh toán</h2>
-                    <label class="pay-card">
-                        <input class="pay-radio" type="radio" name="payment_method" value="cod" @checked(old('payment_method', 'cod') === 'cod')>
-                        <div class="pay-body">
-                            <strong>Thanh toán khi nhận hàng (COD)</strong>
-                            <span>Quý khách thanh toán tiền mặt trực tiếp cho nhân viên bưu tá GHN khi nhận bưu phẩm tận nơi.</span>
-                        </div>
-                    </label>
-                    <label class="pay-card">
-                        <input class="pay-radio" type="radio" name="payment_method" value="momo" @checked(old('payment_method') === 'momo')>
-                        <div class="pay-body">
-                            <strong>Ví điện tử MoMo</strong>
-                            <span>Đơn hàng được tạo trước, sau đó bạn sẽ chuyển sang cổng thanh toán MoMo.</span>
-                        </div>
-                    </label>
+                    <div class="payment-cards">
+                        <label class="pay-card {{ old('payment_method', 'cod') === 'cod' ? 'selected' : '' }}" id="pay_card_cod" for="payment_method_cod">
+                            <input class="pay-radio" type="radio" name="payment_method" id="payment_method_cod" value="cod" @checked(old('payment_method', 'cod') === 'cod')>
+                            <div class="pay-body">
+                                <strong>Thanh toán khi nhận hàng (COD)</strong>
+                                <span>Thanh toán tiền mặt khi nhận hàng.</span>
+                            </div>
+                        </label>
+                        <label class="pay-card {{ old('payment_method') === 'momo' ? 'selected' : '' }}" id="pay_card_momo" for="payment_method_momo">
+                            <input class="pay-radio" type="radio" name="payment_method" id="payment_method_momo" value="momo" @checked(old('payment_method') === 'momo')>
+                            <div class="pay-body">
+                                <div class="pay-title-row">
+                                    <span class="momo-badge" aria-hidden="true">MoMo</span>
+                                    <strong>Thanh toán qua MoMo</strong>
+                                </div>
+                                <span>Bạn sẽ được chuyển đến cổng thanh toán MoMo.</span>
+                            </div>
+                        </label>
+                    </div>
                     @error('payment_method')<span class="error">{{ $message }}</span>@enderror
                 </div>
             </section>
@@ -589,13 +636,18 @@
                 <strong class="val-shipping" id="summary_shipping">Chưa tính</strong>
             </div>
 
+            <div class="summary-row" id="summary_payment_row">
+                <span>Phương thức thanh toán</span>
+                <strong id="summary_payment_val">{{ old('payment_method') === 'momo' ? 'MoMo' : 'COD' }}</strong>
+            </div>
+
             <div class="summary-row total">
                 <span>TỔNG THANH TOÁN</span>
                 <strong id="summary_total">{{ number_format($subtotal, 0, ',', '.') }}₫</strong>
             </div>
 
             <button class="btn-order" id="place_order_btn" type="submit" disabled>
-                <span>ĐẶT HÀNG →</span>
+                <span id="place_order_btn_label">{{ old('payment_method') === 'momo' ? 'THANH TOÁN MOMO →' : 'ĐẶT HÀNG →' }}</span>
             </button>
         </aside>
     </form>
@@ -669,9 +721,11 @@
             const hasWard = Boolean(wardSelect && wardSelect.value);
 
             const feeReady = currentShippingFee !== null && !isCalculatingFee;
+            const selectedPayment = document.querySelector('input[name="payment_method"]:checked');
+            const hasPayment = Boolean(selectedPayment && (selectedPayment.value === 'cod' || selectedPayment.value === 'momo'));
 
             const isFormValid = hasName && hasPhone && hasEmail && hasAddress &&
-                                hasProvince && hasDistrict && hasWard && feeReady;
+                                hasProvince && hasDistrict && hasWard && feeReady && hasPayment;
 
             if (submitBtn) {
                 submitBtn.disabled = !isFormValid;
@@ -958,18 +1012,52 @@
             }
         });
 
+        // Payment UI state updater
+        function updatePaymentUI() {
+            const selectedPayment = document.querySelector('input[name="payment_method"]:checked');
+            const method = selectedPayment ? selectedPayment.value : 'cod';
+            const btnLabel = document.getElementById('place_order_btn_label');
+            const summaryPayment = document.getElementById('summary_payment_val');
+
+            document.querySelectorAll('.pay-card').forEach(card => {
+                const radio = card.querySelector('input[type="radio"]');
+                if (radio && radio.checked) {
+                    card.classList.add('selected');
+                } else {
+                    card.classList.remove('selected');
+                }
+            });
+
+            if (method === 'momo') {
+                if (btnLabel) btnLabel.textContent = 'THANH TOÁN MOMO →';
+                if (summaryPayment) summaryPayment.textContent = 'MoMo';
+            } else {
+                if (btnLabel) btnLabel.textContent = 'ĐẶT HÀNG →';
+                if (summaryPayment) summaryPayment.textContent = 'COD';
+            }
+
+            validateForm();
+        }
+
+        document.querySelectorAll('input[name="payment_method"]').forEach(radio => {
+            radio.addEventListener('change', updatePaymentUI);
+        });
+
         // Submit listener to avoid double submission
         if (form) {
             form.addEventListener('submit', function () {
                 if (submitBtn) {
                     submitBtn.disabled = true;
-                    submitBtn.innerHTML = '<span class="spinner-dot"></span> ĐANG XỬ LÝ...';
+                    const selectedPayment = document.querySelector('input[name="payment_method"]:checked');
+                    const isMomo = selectedPayment && selectedPayment.value === 'momo';
+                    submitBtn.innerHTML = '<span class="spinner-dot"></span> ' + (isMomo ? 'ĐANG CHUYỂN HƯỚNG MOMO...' : 'ĐANG XỬ LÝ...');
                 }
             });
         }
 
         // Initialize
         loadProvinces();
+        updatePaymentUI();
         validateForm();
     })();
 </script>
