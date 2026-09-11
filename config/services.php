@@ -61,6 +61,7 @@ return [
         'secret_key' => env('MOMO_SECRET_KEY'),
         'redirect_url' => env('MOMO_REDIRECT_URL'),
         'ipn_url' => env('MOMO_IPN_URL'),
+        'request_type' => env('MOMO_REQUEST_TYPE', 'payWithCC'),
         'simulator_enabled' => filter_var(env('MOMO_SIMULATOR_ENABLED', false), FILTER_VALIDATE_BOOL),
     ],
 

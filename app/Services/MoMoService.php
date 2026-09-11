@@ -17,9 +17,12 @@ class MoMoService
         $secretKey = (string) config('services.momo.secret_key');
         $redirectUrl = (string) (config('services.momo.redirect_url') ?: route('momo.return'));
         $ipnUrl = (string) (config('services.momo.ipn_url') ?: route('momo.ipn'));
+        $requestType = (string) config('services.momo.request_type', 'payWithCC');
         $gatewayOrderId = (string) $payment->provider_order_id;
 
-        if ($partnerCode === '' || $accessKey === '' || $secretKey === '' || $gatewayOrderId === '' || $payment->order_id !== $order->id || (int) $payment->amount !== (int) $order->total) {
+        if ($partnerCode === '' || $accessKey === '' || $secretKey === '' || $gatewayOrderId === ''
+            || ! in_array($requestType, ['payWithCC', 'payWithATM'], true)
+            || $payment->order_id !== $order->id || (int) $payment->amount !== (int) $order->total) {
             throw new RuntimeException('MoMo is not configured or payment data is invalid.');
         }
 
@@ -31,7 +34,7 @@ class MoMoService
             'orderInfo' => 'Thanh toán đơn hàng '.$order->number,
             'redirectUrl' => $redirectUrl,
             'ipnUrl' => $ipnUrl,
-            'requestType' => 'payWithCC',
+            'requestType' => $requestType,
             'extraData' => '',
             'lang' => 'vi',
             'autoCapture' => true,

@@ -24,6 +24,7 @@ class MoMoPaymentTest extends TestCase
             'endpoint' => 'https://test-payment.momo.vn/v2/gateway/api/create',
             'partner_code' => 'TESTPARTNER', 'access_key' => 'TESTACCESS', 'secret_key' => 'TESTSECRET',
             'redirect_url' => 'http://localhost/payments/momo/return', 'ipn_url' => 'http://localhost/payments/momo/ipn',
+            'request_type' => 'payWithCC',
         ]);
         config()->set('services.ghn.token', 'ghn-token');
         config()->set('services.ghn.shop_id', '123');
@@ -51,9 +52,9 @@ class MoMoPaymentTest extends TestCase
         ], $overrides));
     }
 
-    private function fakeGateways(bool $momoSuccess = true): void
+    private function fakeGateways(bool $momoSuccess = true, string $requestType = 'payWithCC'): void
     {
-        Http::fake(function (ClientRequest $request) use ($momoSuccess) {
+        Http::fake(function (ClientRequest $request) use ($momoSuccess, $requestType) {
             if (str_contains($request->url(), '/shipping-order/fee')) return Http::response(['code' => 200, 'data' => ['total' => 30000]]);
             if (str_contains($request->url(), '/shipping-order/create')) {
                 $this->assertDatabaseCount('orders', 1);
@@ -64,12 +65,44 @@ class MoMoPaymentTest extends TestCase
                 $this->assertSame($attempt->provider_order_id, $request['orderId']);
                 $this->assertDatabaseHas('orders', ['id' => $attempt->order_id, 'payment_method' => 'momo']);
                 $this->assertDatabaseHas('payments', ['request_id' => $request['requestId'], 'provider_order_id' => $request['orderId'], 'amount' => (int) $request['amount']]);
-                $this->assertSame('payWithCC', $request['requestType']);
+                $this->assertSame($requestType, $request['requestType']);
                 return $momoSuccess
                     ? Http::response(['resultCode' => 0, 'message' => 'Success', 'orderId' => $request['orderId'], 'payUrl' => 'https://momo.test/pay/'.$request['requestId']])
                     : Http::response(['resultCode' => 42, 'message' => 'Failed'], 400);
             }
             return Http::response([], 404);
+        });
+    }
+
+    public function test_pay_with_atm_uses_exact_create_signature_and_unique_payment_identity(): void
+    {
+        config()->set('services.momo.request_type', 'payWithATM');
+        $this->fakeGateways(requestType: 'payWithATM');
+        $user = User::factory()->create(['role' => 'customer']);
+
+        $this->checkout($user, $this->variant(), 'momo')->assertRedirect();
+
+        $payment = Payment::where('provider', 'momo')->firstOrFail();
+        Http::assertSent(function (ClientRequest $request) use ($payment): bool {
+            if (! str_contains($request->url(), 'test-payment.momo.vn')) return false;
+
+            $raw = implode('&', [
+                'accessKey=TESTACCESS',
+                'amount='.$request['amount'],
+                'extraData='.$request['extraData'],
+                'ipnUrl='.$request['ipnUrl'],
+                'orderId='.$request['orderId'],
+                'orderInfo='.$request['orderInfo'],
+                'partnerCode='.$request['partnerCode'],
+                'redirectUrl='.$request['redirectUrl'],
+                'requestId='.$request['requestId'],
+                'requestType='.$request['requestType'],
+            ]);
+
+            return $request['requestType'] === 'payWithATM'
+                && $request['requestId'] === $payment->request_id
+                && $request['orderId'] === $payment->provider_order_id
+                && hash_equals(hash_hmac('sha256', $raw, 'TESTSECRET'), $request['signature']);
         });
     }
 
