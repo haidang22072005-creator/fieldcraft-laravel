@@ -57,14 +57,15 @@ class RetryMoMoPayment
 
             $order->update(['payment_method' => 'momo', 'payment_status' => 'pending', 'status' => 'pending_payment', 'shipping_status' => 'pending']);
 
-            return Payment::create([
+            $payment = Payment::create([
                 'order_id' => $order->id,
                 'provider' => 'momo',
                 'request_id' => (string) Str::uuid(),
-                'provider_order_id' => $order->number,
                 'amount' => $order->total,
                 'status' => 'pending',
             ]);
+            $payment->update(['provider_order_id' => $order->number.'-P'.$payment->id]);
+            return $payment;
         });
     }
 }

@@ -60,21 +60,23 @@ class MoMoPaymentTest extends TestCase
                 return Http::response(['code' => 200, 'data' => ['order_code' => 'GHN-MOMO', 'fee' => 30000]]);
             }
             if (str_contains($request->url(), 'test-payment.momo.vn')) {
-                $this->assertDatabaseHas('orders', ['number' => $request['orderId'], 'payment_method' => 'momo']);
-                $this->assertDatabaseHas('payments', ['request_id' => $request['requestId'], 'amount' => (int) $request['amount']]);
+                $attempt = Payment::where('request_id', $request['requestId'])->firstOrFail();
+                $this->assertSame($attempt->provider_order_id, $request['orderId']);
+                $this->assertDatabaseHas('orders', ['id' => $attempt->order_id, 'payment_method' => 'momo']);
+                $this->assertDatabaseHas('payments', ['request_id' => $request['requestId'], 'provider_order_id' => $request['orderId'], 'amount' => (int) $request['amount']]);
                 $this->assertSame('payWithCC', $request['requestType']);
                 return $momoSuccess
-                    ? Http::response(['resultCode' => 0, 'message' => 'Success', 'orderId' => $request['orderId'], 'payUrl' => 'https://momo.test/pay'])
+                    ? Http::response(['resultCode' => 0, 'message' => 'Success', 'orderId' => $request['orderId'], 'payUrl' => 'https://momo.test/pay/'.$request['requestId']])
                     : Http::response(['resultCode' => 42, 'message' => 'Failed'], 400);
             }
             return Http::response([], 404);
         });
     }
 
-    private function ipn(Payment $payment, int $resultCode = 0, ?int $amount = null): array
+    private function ipn(Payment $payment, int $resultCode = 0, ?int $amount = null, ?string $gatewayOrderId = null): array
     {
         $data = [
-            'partnerCode' => 'TESTPARTNER', 'orderId' => $payment->order->number, 'requestId' => $payment->request_id,
+            'partnerCode' => 'TESTPARTNER', 'orderId' => $gatewayOrderId ?? $payment->provider_order_id, 'requestId' => $payment->request_id,
             'amount' => (string) ($amount ?? $payment->amount), 'orderInfo' => 'Thanh toán đơn hàng '.$payment->order->number,
             'orderType' => 'momo_wallet', 'transId' => '123456', 'resultCode' => $resultCode,
             'message' => $resultCode === 0 ? 'Successful.' : 'Failed.', 'payType' => 'qr', 'responseTime' => '1789090000000', 'extraData' => '',
@@ -102,11 +104,14 @@ class MoMoPaymentTest extends TestCase
     {
         $this->fakeGateways();
         $user = User::factory()->create(['role' => 'customer']);
-        $this->checkout($user, $this->variant(price: 100000), 'momo', ['amount' => 1])->assertRedirect('https://momo.test/pay');
+        $response = $this->checkout($user, $this->variant(price: 100000), 'momo', ['amount' => 1]);
 
         $order = Order::firstOrFail();
+        $payment = Payment::firstOrFail();
+        $response->assertRedirect('https://momo.test/pay/'.$payment->request_id);
+        $this->assertMatchesRegularExpression('/^ORD\d{16}-P\d+$/', $payment->provider_order_id);
         $this->assertSame(130000, (int) $order->total);
-        $this->assertDatabaseHas('payments', ['order_id' => $order->id, 'amount' => 130000, 'status' => 'pending', 'pay_url' => 'https://momo.test/pay']);
+        $this->assertDatabaseHas('payments', ['order_id' => $order->id, 'provider_order_id' => $order->number.'-P'.$payment->id, 'amount' => 130000, 'status' => 'pending', 'pay_url' => 'https://momo.test/pay/'.$payment->request_id]);
         $this->assertSame('pending_payment', $order->status);
         Http::assertNotSent(fn (ClientRequest $request) => str_contains($request->url(), '/shipping-order/create'));
     }
@@ -136,6 +141,7 @@ class MoMoPaymentTest extends TestCase
 
         $this->postJson(route('momo.ipn'), $invalid)->assertForbidden();
         $this->postJson(route('momo.ipn'), $this->ipn($payment, amount: 1))->assertUnprocessable();
+        $this->postJson(route('momo.ipn'), $this->ipn($payment, gatewayOrderId: 'ORD-WRONG-P999'))->assertNotFound();
         $this->assertSame('pending', $payment->fresh()->status);
     }
 
@@ -158,11 +164,15 @@ class MoMoPaymentTest extends TestCase
         $this->assertDatabaseHas('orders', ['id' => $payment->order_id, 'status' => 'cancelled', 'payment_status' => 'failed']);
 
         $oldRequestId = $payment->request_id;
-        $this->post(route('momo.retry', $payment->order))->assertRedirect('https://momo.test/pay');
+        $retryResponse = $this->post(route('momo.retry', $payment->order));
         $this->assertDatabaseCount('orders', 1);
         $this->assertDatabaseCount('payments', 2);
         $this->assertDatabaseHas('payments', ['order_id' => $payment->order_id, 'provider' => 'momo', 'status' => 'pending']);
-        $this->assertNotSame($oldRequestId, Payment::latest('id')->value('request_id'));
+        $newPayment = Payment::latest('id')->firstOrFail();
+        $retryResponse->assertRedirect('https://momo.test/pay/'.$newPayment->request_id);
+        $this->assertNotSame($oldRequestId, $newPayment->request_id);
+        $this->assertNotSame($payment->provider_order_id, $newPayment->provider_order_id);
+        $this->assertSame($payment->order_id, $newPayment->order_id);
         $this->assertSame(1, $variant->fresh()->stock);
         $this->assertSame(1, $coupon->fresh()->used_count);
     }
@@ -175,7 +185,7 @@ class MoMoPaymentTest extends TestCase
 
         $this->checkout($user, $variant, 'momo')->assertRedirect(route('checkout'))->assertSessionHasErrors('payment_method');
 
-        $this->assertDatabaseHas('payments', ['status' => 'failed']);
+        $this->assertDatabaseHas('payments', ['status' => 'failed', 'result_code' => 42, 'message' => 'Failed']);
         $this->assertDatabaseHas('orders', ['status' => 'cancelled', 'payment_status' => 'failed']);
         $this->assertSame(2, $variant->fresh()->stock);
     }
@@ -245,6 +255,7 @@ class MoMoPaymentTest extends TestCase
         $payload = $this->ipn($payment); $payload['signature'] = 'invalid';
 
         $this->get(route('momo.return', $payload))->assertOk();
+        $this->get(route('momo.return', $this->ipn($payment, gatewayOrderId: 'ORD-WRONG-P999')))->assertOk();
 
         $this->assertDatabaseHas('payments', ['id' => $payment->id, 'status' => 'pending', 'transaction_id' => null]);
         $this->assertDatabaseHas('orders', ['id' => $payment->order_id, 'payment_status' => 'pending', 'status' => 'pending_payment']);

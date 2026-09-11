@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Actions\CreateOrder;
 use App\Actions\CancelOrder;
 use App\Exceptions\GHNException;
+use App\Exceptions\MoMoInitializationException;
 use App\Models\Payment;
 use App\Services\CartManager;
 use App\Services\GHNOrderService;
@@ -115,10 +116,10 @@ class CheckoutController extends Controller
                 'order_id' => $order->id,
                 'provider' => $input['payment_method'],
                 'request_id' => (string) Str::uuid(),
-                'provider_order_id' => $order->number,
                 'amount' => $order->total,
                 'status' => $input['payment_method'] === 'cod' ? 'unpaid' : 'pending',
             ]);
+            $payment->update(['provider_order_id' => $order->number.'-P'.$payment->id]);
             return [$order, $payment];
         });
 
@@ -127,12 +128,15 @@ class CheckoutController extends Controller
                 $response = $momo->createPayment($order, $payment);
                 $payment->update([
                     'pay_url' => $response['payUrl'],
-                    'provider_order_id' => $response['orderId'] ?? $order->number,
                     'result_code' => $response['resultCode'] ?? 0,
                     'message' => $response['message'] ?? null,
                 ]);
                 $this->cart->removePurchased($request, $items);
                 return redirect()->away($response['payUrl']);
+            } catch (MoMoInitializationException $exception) {
+                $payment->update(['status' => 'failed', 'result_code' => $exception->resultCode, 'message' => $exception->providerMessage]);
+                $cancelOrder->handle($order, 'failed');
+                return redirect()->route('checkout')->withErrors(['payment_method' => 'Không thể khởi tạo thanh toán MoMo. Vui lòng thử lại.']);
             } catch (Throwable) {
                 $payment->update(['status' => 'failed', 'message' => 'Không thể khởi tạo thanh toán MoMo.']);
                 $cancelOrder->handle($order, 'failed');

@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use App\Exceptions\MoMoInitializationException;
 use App\Models\Order;
 use App\Models\Payment;
 use Illuminate\Support\Facades\Http;
@@ -16,8 +17,9 @@ class MoMoService
         $secretKey = (string) config('services.momo.secret_key');
         $redirectUrl = (string) (config('services.momo.redirect_url') ?: route('momo.return'));
         $ipnUrl = (string) (config('services.momo.ipn_url') ?: route('momo.ipn'));
+        $gatewayOrderId = (string) $payment->provider_order_id;
 
-        if ($partnerCode === '' || $accessKey === '' || $secretKey === '' || $payment->order_id !== $order->id || (int) $payment->amount !== (int) $order->total) {
+        if ($partnerCode === '' || $accessKey === '' || $secretKey === '' || $gatewayOrderId === '' || $payment->order_id !== $order->id || (int) $payment->amount !== (int) $order->total) {
             throw new RuntimeException('MoMo is not configured or payment data is invalid.');
         }
 
@@ -25,7 +27,7 @@ class MoMoService
             'partnerCode' => $partnerCode,
             'requestId' => $payment->request_id,
             'amount' => (string) $order->total,
-            'orderId' => $order->number,
+            'orderId' => $gatewayOrderId,
             'orderInfo' => 'Thanh toán đơn hàng '.$order->number,
             'redirectUrl' => $redirectUrl,
             'ipnUrl' => $ipnUrl,
@@ -40,8 +42,11 @@ class MoMoService
             ->post((string) config('services.momo.endpoint'), $data);
         $body = $response->json();
 
-        if ($response->failed() || ! is_array($body) || (int) ($body['resultCode'] ?? -1) !== 0 || blank($body['payUrl'] ?? null)) {
-            throw new RuntimeException('MoMo payment initialization failed.');
+        if ($response->failed() || ! is_array($body) || (int) ($body['resultCode'] ?? -1) !== 0 || blank($body['payUrl'] ?? null)
+            || (isset($body['orderId']) && (string) $body['orderId'] !== $gatewayOrderId)) {
+            $resultCode = is_numeric($body['resultCode'] ?? null) ? (int) $body['resultCode'] : null;
+            $message = is_scalar($body['message'] ?? null) ? mb_substr((string) $body['message'], 0, 255) : null;
+            throw new MoMoInitializationException($resultCode, $message);
         }
 
         return $body;

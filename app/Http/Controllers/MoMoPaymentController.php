@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Actions\CancelOrder;
 use App\Actions\RetryMoMoPayment;
 use App\Exceptions\GHNException;
+use App\Exceptions\MoMoInitializationException;
 use App\Models\Order;
 use App\Models\Payment;
 use App\Services\GHNOrderService;
@@ -29,11 +30,14 @@ class MoMoPaymentController extends Controller
             $response = $momo->createPayment($order->fresh(), $payment);
             $payment->update([
                 'pay_url' => $response['payUrl'],
-                'provider_order_id' => $response['orderId'] ?? $order->number,
                 'result_code' => $response['resultCode'] ?? 0,
                 'message' => $response['message'] ?? null,
             ]);
             return redirect()->away($response['payUrl']);
+        } catch (MoMoInitializationException $exception) {
+            $payment->update(['status' => 'failed', 'result_code' => $exception->resultCode, 'message' => $exception->providerMessage]);
+            $cancelOrder->handle($order, 'failed');
+            return back()->withErrors(['payment' => 'Không thể khởi tạo thanh toán MoMo. Vui lòng thử lại.']);
         } catch (Throwable) {
             $payment->update(['status' => 'failed', 'message' => 'Không thể khởi tạo thanh toán MoMo.']);
             $cancelOrder->handle($order, 'failed');
@@ -148,7 +152,7 @@ class MoMoPaymentController extends Controller
         return $payment->order
             && $payment->provider === 'momo'
             && $payment->request_id === $this->scalar($payload['requestId'] ?? null)
-            && $payment->order->number === $this->scalar($payload['orderId'] ?? null)
+            && $payment->provider_order_id === $this->scalar($payload['orderId'] ?? null)
             && $this->scalar($payload['partnerCode'] ?? null) === (string) config('services.momo.partner_code');
     }
 
