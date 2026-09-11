@@ -80,6 +80,26 @@ class GHNOrderService
         return $this->ghn->createOrder($this->buildPayload($order));
     }
 
+    public function createAndStoreWaybill(Order $order): bool
+    {
+        if ($order->ghn_order_code || ! $order->to_district_id || ! $order->to_ward_code || ! $this->ghn->isConfigured()) {
+            return false;
+        }
+
+        $waybill = $this->createOrder($order);
+        $orderCode = $waybill['order_code'] ?? $waybill['orderCode'] ?? null;
+        if (! $orderCode) {
+            throw new GHNException('GHN did not return an order code.');
+        }
+        $order->forceFill([
+            'ghn_order_code' => $orderCode,
+            'ghn_total_fee' => (int) ($waybill['total_fee'] ?? $waybill['fee'] ?? $order->shipping_fee),
+            'shipping_status' => 'created',
+        ])->save();
+
+        return true;
+    }
+
     public function weightForCartItems(Collection $items): int
     {
         return $this->weightForItems($items);

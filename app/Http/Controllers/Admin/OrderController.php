@@ -2,17 +2,15 @@
 
 namespace App\Http\Controllers\Admin;
 
+use App\Actions\CancelOrder;
 use App\Exceptions\GHNException;
 use App\Http\Controllers\Controller;
 use App\Models\Order;
-use App\Models\Coupon;
-use App\Models\ProductVariant;
 use App\Services\GHNService;
 use App\Models\Product;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\View\View;
-use Illuminate\Support\Facades\DB;
 
 class OrderController extends Controller
 {
@@ -22,37 +20,15 @@ class OrderController extends Controller
         return view('admin.dashboard', ['orders' => $orders, 'revenue' => Order::where('status', 'completed')->sum('total'), 'ordersCount' => Order::count(), 'productsCount' => Product::count()]);
     }
     public function index(): View { return view('admin.orders.index', ['orders' => Order::latest()->paginate(20)]); }
-    public function updateStatus(Request $request, Order $order, GHNService $ghn): RedirectResponse
+    public function updateStatus(Request $request, Order $order, GHNService $ghn, CancelOrder $cancelOrder): RedirectResponse
     {
         $status = $request->validate(['status' => ['required','in:pending,preparing,shipping,completed,cancelled']])['status'];
-        $ghnOrderCode = DB::transaction(function () use ($order, $status) {
-            $lockedOrder = Order::query()->lockForUpdate()->findOrFail($order->id);
-            if ($lockedOrder->status === 'cancelled') {
-                return null;
-            }
-            if ($status !== 'cancelled') {
-                $lockedOrder->update(['status' => $status]);
-                return null;
-            }
+        if ($status !== 'cancelled') {
+            if ($order->status !== 'cancelled') $order->update(['status' => $status]);
+            return back()->with('success','Đã cập nhật trạng thái đơn.');
+        }
 
-            foreach ($lockedOrder->items as $item) {
-                if (! $item->product_variant_id) {
-                    continue;
-                }
-                $variant = ProductVariant::query()->lockForUpdate()->find($item->product_variant_id);
-                $variant?->increment('stock', (int) $item->quantity);
-            }
-
-            $usage = $lockedOrder->couponUsage()->lockForUpdate()->first();
-            if ($usage) {
-                $coupon = Coupon::query()->lockForUpdate()->find($usage->coupon_id);
-                $usage->delete();
-                if ($coupon && $coupon->used_count > 0) $coupon->decrement('used_count');
-            }
-            $ghnOrderCode = $lockedOrder->ghn_order_code;
-            $lockedOrder->update(['status' => 'cancelled', 'shipping_status' => 'cancelled']);
-            return $ghnOrderCode;
-        });
+        $ghnOrderCode = $cancelOrder->handle($order);
 
         if ($ghnOrderCode) {
             try {

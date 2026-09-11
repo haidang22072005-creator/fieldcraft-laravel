@@ -522,10 +522,17 @@
                 <div class="payment-section">
                     <h2>Phương thức thanh toán</h2>
                     <label class="pay-card">
-                        <input class="pay-radio" type="radio" name="payment_method" value="cod" checked>
+                        <input class="pay-radio" type="radio" name="payment_method" value="cod" @checked(old('payment_method', 'cod') === 'cod')>
                         <div class="pay-body">
                             <strong>Thanh toán khi nhận hàng (COD)</strong>
                             <span>Quý khách thanh toán tiền mặt trực tiếp cho nhân viên bưu tá GHN khi nhận bưu phẩm tận nơi.</span>
+                        </div>
+                    </label>
+                    <label class="pay-card">
+                        <input class="pay-radio" type="radio" name="payment_method" value="momo" @checked(old('payment_method') === 'momo')>
+                        <div class="pay-body">
+                            <strong>Ví điện tử MoMo</strong>
+                            <span>Đơn hàng được tạo trước, sau đó bạn sẽ chuyển sang cổng thanh toán MoMo.</span>
                         </div>
                     </label>
                     @error('payment_method')<span class="error">{{ $message }}</span>@enderror

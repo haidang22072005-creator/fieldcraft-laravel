@@ -3,13 +3,19 @@
 namespace App\Http\Controllers;
 
 use App\Actions\CreateOrder;
+use App\Actions\CancelOrder;
 use App\Exceptions\GHNException;
+use App\Models\Payment;
 use App\Services\CartManager;
 use App\Services\GHNOrderService;
 use App\Services\GHNService;
+use App\Services\MoMoService;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Str;
 use Illuminate\View\View;
+use Throwable;
 
 class CheckoutController extends Controller
 {
@@ -35,7 +41,7 @@ class CheckoutController extends Controller
         return view('checkout', compact('items', 'defaults'));
     }
 
-    public function store(Request $request, CreateOrder $createOrder, GHNService $ghn, GHNOrderService $ghnOrders): RedirectResponse
+    public function store(Request $request, CreateOrder $createOrder, GHNService $ghn, GHNOrderService $ghnOrders, MoMoService $momo, CancelOrder $cancelOrder): RedirectResponse
     {
         $input = $request->validate([
             'recipient_name' => ['required', 'string', 'max:100'],
@@ -48,7 +54,7 @@ class CheckoutController extends Controller
             'to_ward_code' => ['nullable', 'string', 'max:20'],
             'address_line' => ['required', 'string', 'max:255'],
             'note' => ['nullable', 'string', 'max:500'],
-            'payment_method' => ['required', 'in:cod,online'],
+            'payment_method' => ['required', 'in:cod,momo'],
             'coupon' => ['nullable', 'string', 'max:30'],
         ]);
         $cartItems = $this->cart->items($request);
@@ -86,37 +92,57 @@ class CheckoutController extends Controller
             $shippingFee = (int) ($feeData['total'] ?? $feeData['service_fee'] ?? $feeData['fee'] ?? 0);
         }
 
-        $order = $createOrder->handle($items->map(fn ($line) => ['product_variant_id'=>$line['variant']->id,'quantity'=>$line['quantity']]), [
-            'user_id' => $request->user()?->id,
-            'payment_method' => $input['payment_method'],
-            'payment_status' => 'pending',
-            'status' => 'pending',
-            'shipping_fee' => $shippingFee,
-            'coupon_code' => $input['coupon'] ?? null,
-            'recipient_name' => $input['recipient_name'],
-            'recipient_phone' => $input['recipient_phone'],
-            'recipient_email' => $input['recipient_email'],
-            'province' => $input['province'],
-            'district' => $input['district'],
-            'ward' => $input['ward'],
-            'to_district_id' => $toDistrictId,
-            'to_ward_code' => $toWardCode,
-            'address_line' => $input['address_line'],
-            'note' => $input['note'] ?? null,
-        ]);
+        [$order, $payment] = DB::transaction(function () use ($createOrder, $items, $input, $request, $shippingFee, $toDistrictId, $toWardCode) {
+            $order = $createOrder->handle($items->map(fn ($line) => ['product_variant_id'=>$line['variant']->id,'quantity'=>$line['quantity']]), [
+                'user_id' => $request->user()?->id,
+                'payment_method' => $input['payment_method'],
+                'payment_status' => $input['payment_method'] === 'cod' ? 'unpaid' : 'pending',
+                'status' => $input['payment_method'] === 'cod' ? 'pending' : 'pending_payment',
+                'shipping_fee' => $shippingFee,
+                'coupon_code' => $input['coupon'] ?? null,
+                'recipient_name' => $input['recipient_name'],
+                'recipient_phone' => $input['recipient_phone'],
+                'recipient_email' => $input['recipient_email'],
+                'province' => $input['province'],
+                'district' => $input['district'],
+                'ward' => $input['ward'],
+                'to_district_id' => $toDistrictId,
+                'to_ward_code' => $toWardCode,
+                'address_line' => $input['address_line'],
+                'note' => $input['note'] ?? null,
+            ]);
+            $payment = Payment::create([
+                'order_id' => $order->id,
+                'provider' => $input['payment_method'],
+                'request_id' => (string) Str::uuid(),
+                'provider_order_id' => $order->number,
+                'amount' => $order->total,
+                'status' => $input['payment_method'] === 'cod' ? 'unpaid' : 'pending',
+            ]);
+            return [$order, $payment];
+        });
+
+        if ($payment->provider === 'momo') {
+            try {
+                $response = $momo->createPayment($order, $payment);
+                $payment->update([
+                    'pay_url' => $response['payUrl'],
+                    'provider_order_id' => $response['orderId'] ?? $order->number,
+                    'result_code' => $response['resultCode'] ?? 0,
+                    'message' => $response['message'] ?? null,
+                ]);
+                $this->cart->removePurchased($request, $items);
+                return redirect()->away($response['payUrl']);
+            } catch (Throwable) {
+                $payment->update(['status' => 'failed', 'message' => 'Không thể khởi tạo thanh toán MoMo.']);
+                $cancelOrder->handle($order, 'failed');
+                return redirect()->route('checkout')->withErrors(['payment_method' => 'Không thể khởi tạo thanh toán MoMo. Vui lòng thử lại.']);
+            }
+        }
 
         if ($toDistrictId && $toWardCode && $ghn->isConfigured()) {
             try {
-                $waybill = $ghnOrders->createOrder($order);
-                $orderCode = $waybill['order_code'] ?? $waybill['orderCode'] ?? null;
-                if (! $orderCode) {
-                    throw new GHNException('GHN did not return an order code.');
-                }
-                $order->forceFill([
-                    'ghn_order_code' => $orderCode,
-                    'ghn_total_fee' => (int) ($waybill['total_fee'] ?? $waybill['fee'] ?? $shippingFee),
-                    'shipping_status' => 'created',
-                ])->save();
+                $ghnOrders->createAndStoreWaybill($order);
             } catch (GHNException) {
                 // The paid/local order is still valid when GHN waybill creation is unavailable.
             }
@@ -127,6 +153,6 @@ class CheckoutController extends Controller
 
     public function purchases(Request $request): View
     {
-        return view('purchases', ['orders' => $request->user()->orders()->with('items')->latest()->get()]);
+        return view('purchases', ['orders' => $request->user()->orders()->with(['items', 'payments'])->latest()->get()]);
     }
 }

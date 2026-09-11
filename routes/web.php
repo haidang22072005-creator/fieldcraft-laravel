@@ -8,6 +8,7 @@ use App\Http\Controllers\AuthController;
 use App\Http\Controllers\CartController;
 use App\Http\Controllers\CheckoutController;
 use App\Http\Controllers\LocationController;
+use App\Http\Controllers\MoMoPaymentController;
 use App\Http\Controllers\StorefrontController;
 use App\Http\Controllers\SettingsController;
 use Illuminate\Foundation\Auth\EmailVerificationRequest;
@@ -27,6 +28,9 @@ Route::delete('/cart/items/{variant}', [CartController::class, 'remove'])->name(
 Route::delete('/cart', [CartController::class, 'clear'])->name('cart.clear');
 Route::get('/checkout', [CheckoutController::class, 'create'])->middleware(['auth', 'verified'])->name('checkout');
 Route::post('/checkout', [CheckoutController::class, 'store'])->middleware(['auth', 'verified'])->name('checkout.store');
+Route::get('/payments/momo/return', [MoMoPaymentController::class, 'showReturn'])->middleware('auth')->name('momo.return');
+Route::post('/payments/momo/ipn', [MoMoPaymentController::class, 'ipn'])->middleware('throttle:60,1')->name('momo.ipn');
+Route::post('/orders/{order}/payments/momo/retry', [MoMoPaymentController::class, 'retry'])->middleware(['auth', 'verified', 'throttle:6,1'])->name('momo.retry');
 Route::middleware(['auth', 'verified'])->prefix('locations')->name('locations.')->group(function () {
     Route::get('/provinces', [LocationController::class, 'provinces'])->name('provinces');
     Route::get('/districts/{provinceId}', [LocationController::class, 'districts'])->whereNumber('provinceId')->name('districts');
