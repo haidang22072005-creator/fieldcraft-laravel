@@ -13,6 +13,8 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Str;
 use Illuminate\View\View;
 use Throwable;
 
@@ -39,12 +41,21 @@ class MoMoPaymentController extends Controller
         }
     }
 
-    public function showReturn(Request $request): View
+    public function showReturn(Request $request, MoMoService $momo, CancelOrder $cancelOrder, GHNOrderService $ghnOrders): View
     {
+        $payload = $request->query();
         $payment = Payment::query()->with('order')
-            ->where('request_id', (string) $request->query('requestId'))
+            ->where('request_id', $this->scalar($request->query('requestId')))
             ->whereHas('order', fn ($query) => $query->where('user_id', $request->user()->id))
             ->first();
+
+        if ($payment?->status === 'pending'
+            && $momo->verifySignature($payload)
+            && $this->identityMatches($payment, $payload)
+            && $this->amountMatches($payment, $payload)) {
+            $this->processResult($payment, $payload, $cancelOrder, $ghnOrders);
+            $payment = $payment->fresh('order');
+        }
 
         return view('payments.momo-return', compact('payment'));
     }
@@ -52,20 +63,30 @@ class MoMoPaymentController extends Controller
     public function ipn(Request $request, MoMoService $momo, CancelOrder $cancelOrder, GHNOrderService $ghnOrders): JsonResponse
     {
         $payload = $request->all();
+        Log::info('MoMo IPN received.', [
+            'request_id' => Str::limit($this->scalar($request->input('requestId')), 64, ''),
+            'order_id' => Str::limit($this->scalar($request->input('orderId')), 64, ''),
+            'result_code' => $this->scalar($request->input('resultCode')),
+            'trans_id_present' => $this->scalar($request->input('transId')) !== '',
+        ]);
         if (! $momo->verifySignature($payload)) {
             return response()->json(['resultCode' => 1, 'message' => 'Invalid signature.'], 403);
         }
 
-        $payment = Payment::query()->with('order')->where('request_id', (string) ($payload['requestId'] ?? ''))->first();
-        if (! $payment || ! $payment->order || $payment->provider !== 'momo'
-            || $payment->order->number !== (string) ($payload['orderId'] ?? '')
-            || (string) ($payload['partnerCode'] ?? '') !== (string) config('services.momo.partner_code')) {
+        $payment = Payment::query()->with('order')->where('request_id', $this->scalar($payload['requestId'] ?? null))->first();
+        if (! $payment || ! $this->identityMatches($payment, $payload)) {
             return response()->json(['resultCode' => 2, 'message' => 'Payment not found.'], 404);
         }
-        if ((int) ($payload['amount'] ?? -1) !== (int) $payment->amount || (int) $payment->amount !== (int) $payment->order->total) {
+        if (! $this->amountMatches($payment, $payload)) {
             return response()->json(['resultCode' => 3, 'message' => 'Amount mismatch.'], 422);
         }
 
+        $this->processResult($payment, $payload, $cancelOrder, $ghnOrders);
+        return response()->json(['resultCode' => 0, 'message' => 'Acknowledged']);
+    }
+
+    private function processResult(Payment $payment, array $payload, CancelOrder $cancelOrder, GHNOrderService $ghnOrders): void
+    {
         if ((int) ($payload['resultCode'] ?? -1) === 0) {
             [$order, $createWaybill] = DB::transaction(function () use ($payment, $payload) {
                 $lockedPayment = Payment::query()->lockForUpdate()->findOrFail($payment->id);
@@ -104,7 +125,7 @@ class MoMoPaymentController extends Controller
                 }
             }
 
-            return response()->json(['resultCode' => 0, 'message' => 'Success']);
+            return;
         }
 
         DB::transaction(function () use ($payment, $payload, $cancelOrder) {
@@ -120,6 +141,26 @@ class MoMoPaymentController extends Controller
             $cancelOrder->handle($lockedPayment->order, $status);
         });
 
-        return response()->json(['resultCode' => 0, 'message' => 'Acknowledged']);
+    }
+
+    private function identityMatches(Payment $payment, array $payload): bool
+    {
+        return $payment->order
+            && $payment->provider === 'momo'
+            && $payment->request_id === $this->scalar($payload['requestId'] ?? null)
+            && $payment->order->number === $this->scalar($payload['orderId'] ?? null)
+            && $this->scalar($payload['partnerCode'] ?? null) === (string) config('services.momo.partner_code');
+    }
+
+    private function amountMatches(Payment $payment, array $payload): bool
+    {
+        return is_numeric($payload['amount'] ?? null)
+            && (int) $payload['amount'] === (int) $payment->amount
+            && (int) $payment->amount === (int) $payment->order->total;
+    }
+
+    private function scalar(mixed $value): string
+    {
+        return is_scalar($value) ? (string) $value : '';
     }
 }

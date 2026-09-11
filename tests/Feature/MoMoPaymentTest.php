@@ -207,4 +207,62 @@ class MoMoPaymentTest extends TestCase
         $this->assertDatabaseCount('payments', 1);
         $this->assertSame(0, $variant->fresh()->stock);
     }
+
+    public function test_valid_signed_failed_return_updates_pending_payment_to_failed(): void
+    {
+        $this->fakeGateways();
+        $user = User::factory()->create(['role' => 'customer']);
+        $this->checkout($user, $this->variant(), 'momo');
+        $payment = Payment::with('order')->firstOrFail();
+        $orderId = $payment->order_id;
+
+        $this->get(route('momo.return', $this->ipn($payment, 99)))->assertOk();
+
+        $this->assertDatabaseHas('payments', ['id' => $payment->id, 'status' => 'failed', 'result_code' => 99]);
+        $this->assertDatabaseHas('orders', ['id' => $orderId, 'status' => 'cancelled', 'payment_status' => 'failed']);
+        $this->assertDatabaseCount('orders', 1);
+    }
+
+    public function test_valid_signed_success_return_updates_pending_payment_to_paid(): void
+    {
+        $this->fakeGateways();
+        $user = User::factory()->create(['role' => 'customer']);
+        $this->checkout($user, $this->variant(), 'momo');
+        $payment = Payment::with('order')->firstOrFail();
+
+        $this->get(route('momo.return', $this->ipn($payment)))->assertOk();
+
+        $this->assertDatabaseHas('payments', ['id' => $payment->id, 'status' => 'paid', 'transaction_id' => '123456']);
+        $this->assertDatabaseHas('orders', ['id' => $payment->order_id, 'payment_status' => 'paid', 'status' => 'pending']);
+    }
+
+    public function test_invalid_return_signature_does_not_change_pending_payment(): void
+    {
+        $this->fakeGateways();
+        $user = User::factory()->create(['role' => 'customer']);
+        $this->checkout($user, $this->variant(), 'momo');
+        $payment = Payment::with('order')->firstOrFail();
+        $payload = $this->ipn($payment); $payload['signature'] = 'invalid';
+
+        $this->get(route('momo.return', $payload))->assertOk();
+
+        $this->assertDatabaseHas('payments', ['id' => $payment->id, 'status' => 'pending', 'transaction_id' => null]);
+        $this->assertDatabaseHas('orders', ['id' => $payment->order_id, 'payment_status' => 'pending', 'status' => 'pending_payment']);
+    }
+
+    public function test_ipn_after_processed_return_does_not_duplicate_ghn_or_payment_effects(): void
+    {
+        $this->fakeGateways();
+        $user = User::factory()->create(['role' => 'customer']);
+        $this->checkout($user, $this->variant(), 'momo');
+        $payment = Payment::with('order')->firstOrFail();
+        $payload = $this->ipn($payment);
+
+        $this->get(route('momo.return', $payload))->assertOk();
+        $this->postJson(route('momo.ipn'), $payload)->assertOk();
+
+        $this->assertDatabaseCount('payments', 1);
+        $this->assertCount(1, Http::recorded(fn ($request) => str_contains($request->url(), '/shipping-order/create')));
+        $this->assertSame('paid', $payment->fresh()->status);
+    }
 }
