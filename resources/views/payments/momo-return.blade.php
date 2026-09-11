@@ -291,6 +291,9 @@
             </div>
 
             <div class="actions">
+                @if(app()->environment('local') && config('services.momo.simulator_enabled') === true && $status === 'pending')
+                    <a href="{{ route('momo.sandbox', $payment->order) }}" class="btn btn-primary">THANH TOÁN QUA MOMO →</a>
+                @endif
                 @if(in_array($status, ['failed', 'cancelled'], true))
                     <form method="POST" action="{{ route('momo.retry', $payment->order) }}" style="display:inline-block;width:100%;">
                         @csrf

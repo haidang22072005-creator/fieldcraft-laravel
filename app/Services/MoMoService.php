@@ -61,13 +61,18 @@ class MoMoService
             return false;
         }
 
-        $keys = ['amount', 'extraData', 'message', 'orderId', 'orderInfo', 'orderType', 'partnerCode', 'payType', 'requestId', 'responseTime', 'resultCode', 'transId'];
-        $parts = ['accessKey='.$accessKey];
-        foreach ($keys as $key) {
-            $parts[] = $key.'='.(string) ($payload[$key] ?? '');
-        }
+        return hash_equals(hash_hmac('sha256', $this->resultRawSignature($payload, $accessKey), $secretKey), $provided);
+    }
 
-        return hash_equals(hash_hmac('sha256', implode('&', $parts), $secretKey), $provided);
+    public function signResultPayload(array $payload): array
+    {
+        $secretKey = (string) config('services.momo.secret_key');
+        $accessKey = (string) config('services.momo.access_key');
+        if ($secretKey === '' || $accessKey === '') {
+            throw new RuntimeException('MoMo signing is not configured.');
+        }
+        $payload['signature'] = hash_hmac('sha256', $this->resultRawSignature($payload, $accessKey), $secretKey);
+        return $payload;
     }
 
     private function createRawSignature(array $data, string $accessKey): string
@@ -84,5 +89,15 @@ class MoMoService
             'requestId='.$data['requestId'],
             'requestType='.$data['requestType'],
         ]);
+    }
+
+    private function resultRawSignature(array $payload, string $accessKey): string
+    {
+        $keys = ['amount', 'extraData', 'message', 'orderId', 'orderInfo', 'orderType', 'partnerCode', 'payType', 'requestId', 'responseTime', 'resultCode', 'transId'];
+        $parts = ['accessKey='.$accessKey];
+        foreach ($keys as $key) {
+            $parts[] = $key.'='.(string) ($payload[$key] ?? '');
+        }
+        return implode('&', $parts);
     }
 }

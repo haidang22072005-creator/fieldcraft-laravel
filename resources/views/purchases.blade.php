@@ -354,6 +354,11 @@
             && $order->status === 'cancelled'
             && !$order->ghn_order_code
             && $order->payment_status !== 'paid')
+        @php($canSimulate = app()->environment('local')
+            && config('services.momo.simulator_enabled') === true
+            && $order->payment_method === 'momo'
+            && $lastPayment?->status === 'pending'
+            && $order->payment_status !== 'paid')
 
         <section class="order-card">
             <div class="order-grid">
@@ -417,6 +422,9 @@
                             @csrf
                             <button class="btn-retry" type="submit">THỬ THANH TOÁN LẠI →</button>
                         </form>
+                    @endif
+                    @if($canSimulate)
+                        <a href="{{ route('momo.sandbox', $order) }}" class="btn-retry" style="display:inline-flex;">THANH TOÁN LẠI QUA MOMO →</a>
                     @endif
                 </div>
             </div>

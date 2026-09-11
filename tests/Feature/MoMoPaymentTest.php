@@ -73,6 +73,13 @@ class MoMoPaymentTest extends TestCase
         });
     }
 
+    private function enableSimulator(): void
+    {
+        app()->detectEnvironment(fn () => 'local');
+        config()->set('services.momo.simulator_enabled', true);
+        $this->withSession(['_token' => 'lab-csrf-token'])->withHeader('X-CSRF-TOKEN', 'lab-csrf-token');
+    }
+
     private function ipn(Payment $payment, int $resultCode = 0, ?int $amount = null, ?string $gatewayOrderId = null): array
     {
         $data = [
@@ -275,5 +282,90 @@ class MoMoPaymentTest extends TestCase
         $this->assertDatabaseCount('payments', 1);
         $this->assertCount(1, Http::recorded(fn ($request) => str_contains($request->url(), '/shipping-order/create')));
         $this->assertSame('paid', $payment->fresh()->status);
+    }
+
+    public function test_simulator_is_unavailable_when_disabled(): void
+    {
+        app()->detectEnvironment(fn () => 'local');
+        config()->set('services.momo.simulator_enabled', false);
+        $this->withSession(['_token' => 'lab-csrf-token'])->withHeader('X-CSRF-TOKEN', 'lab-csrf-token');
+        $this->fakeGateways();
+        $user = User::factory()->create(['role' => 'customer']);
+        $this->checkout($user, $this->variant(), 'momo');
+        $order = Order::firstOrFail();
+
+        $this->actingAs($user)->post(route('momo.simulate-success', $order))->assertNotFound();
+    }
+
+    public function test_simulator_is_unavailable_outside_local(): void
+    {
+        config()->set('services.momo.simulator_enabled', true);
+        $this->fakeGateways();
+        $user = User::factory()->create(['role' => 'customer']);
+        $this->checkout($user, $this->variant(), 'momo');
+        $order = Order::firstOrFail();
+
+        $this->actingAs($user)->post(route('momo.simulate-success', $order))->assertNotFound();
+    }
+
+    public function test_another_user_cannot_simulate_order(): void
+    {
+        $this->enableSimulator();
+        $this->fakeGateways();
+        $owner = User::factory()->create(['role' => 'customer']);
+        $this->checkout($owner, $this->variant(), 'momo');
+        $order = Order::firstOrFail();
+        $other = User::factory()->create(['role' => 'customer']);
+
+        $this->actingAs($other)->post(route('momo.simulate-success', $order))->assertForbidden();
+        $this->assertSame('pending', Payment::firstOrFail()->status);
+    }
+
+    public function test_local_simulator_uses_server_payment_identity_and_marks_same_order_paid(): void
+    {
+        $this->enableSimulator();
+        $this->fakeGateways();
+        $user = User::factory()->create(['role' => 'customer']);
+        $this->checkout($user, $this->variant(), 'momo');
+        $payment = Payment::with('order')->firstOrFail();
+
+        $this->post(route('momo.simulate-success', $payment->order), [
+            'amount' => 1, 'requestId' => 'fake', 'orderId' => 'fake',
+        ])->assertRedirect(route('purchases'));
+
+        $this->assertDatabaseCount('orders', 1);
+        $this->assertDatabaseHas('payments', ['id' => $payment->id, 'order_id' => $payment->order_id, 'status' => 'paid', 'result_code' => 0]);
+        $this->assertStringStartsWith('LAB-', (string) $payment->fresh()->transaction_id);
+        $this->assertDatabaseHas('orders', ['id' => $payment->order_id, 'payment_status' => 'paid', 'status' => 'pending', 'ghn_order_code' => 'GHN-MOMO']);
+    }
+
+    public function test_duplicate_simulation_is_idempotent_and_does_not_duplicate_ghn(): void
+    {
+        $this->enableSimulator();
+        $this->fakeGateways();
+        $user = User::factory()->create(['role' => 'customer']);
+        $this->checkout($user, $this->variant(), 'momo');
+        $payment = Payment::with('order')->firstOrFail();
+
+        $this->post(route('momo.simulate-success', $payment->order))->assertRedirect(route('purchases'));
+        $transactionId = $payment->fresh()->transaction_id;
+        $this->post(route('momo.simulate-success', $payment->order))->assertSessionHasErrors('payment');
+
+        $this->assertSame($transactionId, $payment->fresh()->transaction_id);
+        $this->assertDatabaseCount('payments', 1);
+        $this->assertCount(1, Http::recorded(fn ($request) => str_contains($request->url(), '/shipping-order/create')));
+    }
+
+    public function test_paid_order_cannot_be_simulated_again(): void
+    {
+        $this->enableSimulator();
+        $this->fakeGateways();
+        $user = User::factory()->create(['role' => 'customer']);
+        $this->checkout($user, $this->variant(), 'momo');
+        $payment = Payment::with('order')->firstOrFail();
+        $this->postJson(route('momo.ipn'), $this->ipn($payment))->assertOk();
+
+        $this->post(route('momo.simulate-success', $payment->order))->assertSessionHasErrors('payment');
+        $this->assertDatabaseCount('payments', 1);
     }
 }

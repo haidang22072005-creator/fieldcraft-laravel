@@ -16,11 +16,48 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
+use Illuminate\Validation\ValidationException;
 use Illuminate\View\View;
 use Throwable;
 
 class MoMoPaymentController extends Controller
 {
+    public function simulateSuccess(Request $request, Order $order, MoMoService $momo, CancelOrder $cancelOrder, GHNOrderService $ghnOrders): RedirectResponse
+    {
+        abort_unless(app()->environment('local') && config('services.momo.simulator_enabled') === true, 404);
+        abort_unless($order->user_id === $request->user()->id, 403);
+        if ($order->payment_method !== 'momo' || $order->payment_status === 'paid') {
+            throw ValidationException::withMessages(['payment' => 'Đơn hàng không thể giả lập thanh toán.']);
+        }
+
+        $payment = $order->payments()->where('provider', 'momo')->latest('id')->first();
+        if (! $payment || $payment->status !== 'pending') {
+            throw ValidationException::withMessages(['payment' => 'Không có giao dịch MoMo đang chờ xử lý.']);
+        }
+
+        $payload = $momo->signResultPayload([
+            'partnerCode' => (string) config('services.momo.partner_code'),
+            'orderId' => $payment->provider_order_id,
+            'requestId' => $payment->request_id,
+            'amount' => (string) $payment->amount,
+            'orderInfo' => 'Thanh toán đơn hàng '.$order->number,
+            'orderType' => 'momo_wallet',
+            'transId' => 'LAB-'.Str::upper((string) Str::ulid()),
+            'resultCode' => 0,
+            'message' => 'Successful.',
+            'payType' => 'credit',
+            'responseTime' => (string) now()->getTimestampMs(),
+            'extraData' => '',
+        ]);
+
+        if (! $momo->verifySignature($payload) || ! $this->identityMatches($payment->load('order'), $payload) || ! $this->amountMatches($payment, $payload)) {
+            throw ValidationException::withMessages(['payment' => 'Dữ liệu giả lập không hợp lệ.']);
+        }
+
+        $this->processResult($payment, $payload, $cancelOrder, $ghnOrders);
+        return redirect()->route('purchases')->with('success', 'LAB: Đã giả lập thanh toán MoMo thành công.');
+    }
+
     public function retry(Request $request, Order $order, RetryMoMoPayment $retry, MoMoService $momo, CancelOrder $cancelOrder): RedirectResponse
     {
         abort_unless($order->user_id === $request->user()->id, 403);
@@ -89,7 +126,7 @@ class MoMoPaymentController extends Controller
         return response()->json(['resultCode' => 0, 'message' => 'Acknowledged']);
     }
 
-    private function processResult(Payment $payment, array $payload, CancelOrder $cancelOrder, GHNOrderService $ghnOrders): void
+    protected function processResult(Payment $payment, array $payload, CancelOrder $cancelOrder, GHNOrderService $ghnOrders): void
     {
         if ((int) ($payload['resultCode'] ?? -1) === 0) {
             [$order, $createWaybill] = DB::transaction(function () use ($payment, $payload) {
@@ -147,7 +184,7 @@ class MoMoPaymentController extends Controller
 
     }
 
-    private function identityMatches(Payment $payment, array $payload): bool
+    protected function identityMatches(Payment $payment, array $payload): bool
     {
         return $payment->order
             && $payment->provider === 'momo'
@@ -156,14 +193,14 @@ class MoMoPaymentController extends Controller
             && $this->scalar($payload['partnerCode'] ?? null) === (string) config('services.momo.partner_code');
     }
 
-    private function amountMatches(Payment $payment, array $payload): bool
+    protected function amountMatches(Payment $payment, array $payload): bool
     {
         return is_numeric($payload['amount'] ?? null)
             && (int) $payload['amount'] === (int) $payment->amount
             && (int) $payment->amount === (int) $payment->order->total;
     }
 
-    private function scalar(mixed $value): string
+    protected function scalar(mixed $value): string
     {
         return is_scalar($value) ? (string) $value : '';
     }
