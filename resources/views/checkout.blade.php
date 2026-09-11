@@ -285,6 +285,20 @@
             letter-spacing: .04em;
             flex-shrink: 0;
         }
+        .vietqr-badge {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            padding: 2px 6px;
+            border-radius: 4px;
+            background: #0054a6;
+            color: #ffffff;
+            font-weight: 800;
+            font-size: 10px;
+            font-family: 'DM Mono', monospace;
+            letter-spacing: .04em;
+            flex-shrink: 0;
+        }
 
         /* Summary Sidebar */
         aside.panel {
@@ -579,6 +593,16 @@
                                     <strong>Thanh toán qua MoMo</strong>
                                 </div>
                                 <span>Bạn sẽ được chuyển đến cổng thanh toán MoMo.</span>
+                            </div>
+                        </label>
+                        <label class="pay-card {{ old('payment_method') === 'bank_qr' ? 'selected' : '' }}" id="pay_card_bank_qr" for="payment_method_bank_qr">
+                            <input class="pay-radio" type="radio" name="payment_method" id="payment_method_bank_qr" value="bank_qr" @checked(old('payment_method') === 'bank_qr')>
+                            <div class="pay-body">
+                                <div class="pay-title-row">
+                                    <span class="vietqr-badge" aria-hidden="true">VIETQR</span>
+                                    <strong>Chuyển khoản ngân hàng</strong>
+                                </div>
+                                <span>Quét VietQR bằng ứng dụng ngân hàng của bạn.</span>
                             </div>
                         </label>
                     </div>
@@ -1031,6 +1055,9 @@
             if (method === 'momo') {
                 if (btnLabel) btnLabel.textContent = 'THANH TOÁN MOMO →';
                 if (summaryPayment) summaryPayment.textContent = 'MoMo';
+            } else if (method === 'bank_qr') {
+                if (btnLabel) btnLabel.textContent = 'THANH TOÁN QUA NGÂN HÀNG →';
+                if (summaryPayment) summaryPayment.textContent = 'Chuyển khoản VietQR';
             } else {
                 if (btnLabel) btnLabel.textContent = 'ĐẶT HÀNG →';
                 if (summaryPayment) summaryPayment.textContent = 'COD';
@@ -1049,8 +1076,14 @@
                 if (submitBtn) {
                     submitBtn.disabled = true;
                     const selectedPayment = document.querySelector('input[name="payment_method"]:checked');
-                    const isMomo = selectedPayment && selectedPayment.value === 'momo';
-                    submitBtn.innerHTML = '<span class="spinner-dot"></span> ' + (isMomo ? 'ĐANG CHUYỂN HƯỚNG MOMO...' : 'ĐANG XỬ LÝ...');
+                    const methodVal = selectedPayment ? selectedPayment.value : 'cod';
+                    let loadingText = 'ĐANG XỬ LÝ...';
+                    if (methodVal === 'momo') {
+                        loadingText = 'ĐANG CHUYỂN HƯỚNG MOMO...';
+                    } else if (methodVal === 'bank_qr') {
+                        loadingText = 'ĐANG TẠO MÃ VIETQR...';
+                    }
+                    submitBtn.innerHTML = '<span class="spinner-dot"></span> ' + loadingText;
                 }
             });
         }

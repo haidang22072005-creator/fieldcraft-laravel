@@ -9,6 +9,7 @@ use App\Http\Controllers\CartController;
 use App\Http\Controllers\CheckoutController;
 use App\Http\Controllers\LocationController;
 use App\Http\Controllers\MoMoPaymentController;
+use App\Http\Controllers\PayOSPaymentController;
 use App\Http\Controllers\MoMoSandboxController;
 use App\Http\Controllers\StorefrontController;
 use App\Http\Controllers\SettingsController;
@@ -32,6 +33,12 @@ Route::post('/checkout', [CheckoutController::class, 'store'])->middleware(['aut
 Route::get('/payments/momo/return', [MoMoPaymentController::class, 'showReturn'])->middleware('auth')->name('momo.return');
 Route::post('/payments/momo/ipn', [MoMoPaymentController::class, 'ipn'])->middleware('throttle:60,1')->name('momo.ipn');
 Route::post('/orders/{order}/payments/momo/retry', [MoMoPaymentController::class, 'retry'])->middleware(['auth', 'verified', 'throttle:6,1'])->name('momo.retry');
+Route::get('/orders/{order}/payments/bank', [CheckoutController::class, 'showBankPayment'])->middleware(['auth', 'verified'])->name('payments.bank');
+Route::get('/payments/payos/return', [PayOSPaymentController::class, 'showReturn'])->middleware('auth')->name('payos.return');
+Route::get('/payments/payos/cancel', [PayOSPaymentController::class, 'cancel'])->middleware('auth')->name('payos.cancel');
+Route::post('/payments/payos/webhook', [PayOSPaymentController::class, 'webhook'])->middleware('throttle:60,1')->name('payos.webhook');
+Route::get('/payments/payos/{payment}/status', [PayOSPaymentController::class, 'status'])->middleware(['auth', 'verified'])->name('payos.status');
+Route::post('/orders/{order}/payments/payos/retry', [PayOSPaymentController::class, 'retry'])->middleware(['auth', 'verified', 'throttle:6,1'])->name('payos.retry');
 if ((app()->environment('local') && config('services.momo.simulator_enabled') === true) || app()->environment('testing')) {
     Route::post('/orders/{order}/payments/momo/simulate-success', [MoMoPaymentController::class, 'simulateSuccess'])->middleware(['auth', 'verified', 'throttle:6,1'])->name('momo.simulate-success');
     Route::get('/orders/{order}/payments/momo/sandbox', [MoMoSandboxController::class, 'show'])->middleware(['auth', 'verified'])->name('momo.sandbox');

@@ -6,11 +6,13 @@ use App\Actions\CreateOrder;
 use App\Actions\CancelOrder;
 use App\Exceptions\GHNException;
 use App\Exceptions\MoMoInitializationException;
+use App\Models\Order;
 use App\Models\Payment;
 use App\Services\CartManager;
 use App\Services\GHNOrderService;
 use App\Services\GHNService;
 use App\Services\MoMoService;
+use App\Services\PayOSService;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -42,7 +44,7 @@ class CheckoutController extends Controller
         return view('checkout', compact('items', 'defaults'));
     }
 
-    public function store(Request $request, CreateOrder $createOrder, GHNService $ghn, GHNOrderService $ghnOrders, MoMoService $momo, CancelOrder $cancelOrder): RedirectResponse
+    public function store(Request $request, CreateOrder $createOrder, GHNService $ghn, GHNOrderService $ghnOrders, MoMoService $momo, PayOSService $payOS, CancelOrder $cancelOrder): RedirectResponse
     {
         $input = $request->validate([
             'recipient_name' => ['required', 'string', 'max:100'],
@@ -55,7 +57,7 @@ class CheckoutController extends Controller
             'to_ward_code' => ['nullable', 'string', 'max:20'],
             'address_line' => ['required', 'string', 'max:255'],
             'note' => ['nullable', 'string', 'max:500'],
-            'payment_method' => ['required', 'in:cod,momo'],
+            'payment_method' => ['required', 'in:cod,momo,bank_qr'],
             'coupon' => ['nullable', 'string', 'max:30'],
         ]);
         $cartItems = $this->cart->items($request);
@@ -119,7 +121,10 @@ class CheckoutController extends Controller
                 'amount' => $order->total,
                 'status' => $input['payment_method'] === 'cod' ? 'unpaid' : 'pending',
             ]);
-            $payment->update(['provider_order_id' => $order->number.'-P'.$payment->id]);
+            $providerOrderId = $input['payment_method'] === 'bank_qr'
+                ? now()->format('ymdHis').str_pad((string) $payment->id, 6, '0', STR_PAD_LEFT)
+                : $order->number.'-P'.$payment->id;
+            $payment->update(['provider_order_id' => $providerOrderId]);
             return [$order, $payment];
         });
 
@@ -144,6 +149,24 @@ class CheckoutController extends Controller
             }
         }
 
+        if ($payment->provider === 'bank_qr') {
+            try {
+                $response = $payOS->createPayment($order, $payment);
+                $payment->update([
+                    'pay_url' => $response['checkoutUrl'],
+                    'transaction_id' => $response['paymentLinkId'] ?? null,
+                    'result_code' => 0,
+                    'message' => $response['status'] ?? 'PENDING',
+                ]);
+                $this->cart->removePurchased($request, $items);
+                return redirect()->away($response['checkoutUrl']);
+            } catch (Throwable) {
+                $payment->update(['status' => 'failed', 'message' => 'Không thể khởi tạo thanh toán payOS.']);
+                $cancelOrder->handle($order, 'failed');
+                return redirect()->route('checkout')->withErrors(['payment_method' => 'Không thể khởi tạo thanh toán payOS. Vui lòng thử lại.']);
+            }
+        }
+
         if ($toDistrictId && $toWardCode && $ghn->isConfigured()) {
             try {
                 $ghnOrders->createAndStoreWaybill($order);
@@ -158,5 +181,13 @@ class CheckoutController extends Controller
     public function purchases(Request $request): View
     {
         return view('purchases', ['orders' => $request->user()->orders()->with(['items', 'payments'])->latest()->get()]);
+    }
+
+    public function showBankPayment(Request $request, Order $order): View
+    {
+        abort_unless($order->user_id === $request->user()->id, 403);
+        $order->load(['payments', 'items']);
+        $payment = $order->payments()->latest('id')->first();
+        return view('payments.bank-qr', compact('order', 'payment'));
     }
 }

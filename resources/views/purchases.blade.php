@@ -177,6 +177,11 @@
             color: #ffffff;
             border: 1px solid #c2187b;
         }
+        .badge-vietqr {
+            background: #003366;
+            color: #70d6ff;
+            border: 1px solid #0054a6;
+        }
         .badge-success {
             background: rgba(202, 255, 57, 0.15);
             color: var(--neon-green);
@@ -393,6 +398,18 @@
                             @else
                                 <span class="badge badge-muted">MoMo {{ $momoStatus }}</span>
                             @endif
+                        @elseif($order->payment_method === 'bank_qr' || $order->payment_method === 'payos')
+                            <span class="badge badge-vietqr">BANK QR</span>
+                            @php($bankStatus = $lastPayment?->status ?? $order->payment_status)
+                            @if($bankStatus === 'paid' || $order->payment_status === 'paid')
+                                <span class="badge badge-success">Đã thanh toán</span>
+                            @elseif($bankStatus === 'pending' || $order->status === 'pending_payment')
+                                <span class="badge badge-warning">Chờ thanh toán</span>
+                            @elseif($bankStatus === 'cancelled' || $bankStatus === 'failed')
+                                <span class="badge badge-danger">Đã hủy / Hết hạn</span>
+                            @else
+                                <span class="badge badge-muted">{{ $bankStatus }}</span>
+                            @endif
                         @else
                             <span class="badge badge-muted">{{ $order->payment_method }}</span>
                         @endif
@@ -423,8 +440,13 @@
                             <button class="btn-retry" type="submit">THỬ THANH TOÁN LẠI →</button>
                         </form>
                     @endif
-                    @if($canSimulate)
-                        <a href="{{ route('momo.sandbox', $order) }}" class="btn-retry" style="display:inline-flex;">THANH TOÁN LẠI QUA MOMO →</a>
+                    @if($order->payment_method === 'bank_qr' || $order->payment_method === 'payos')
+                        @php($bankStatus = $lastPayment?->status ?? $order->payment_status)
+                        @if(($bankStatus === 'pending' || $order->status === 'pending_payment') && $order->payment_status !== 'paid')
+                            <a href="{{ route('payments.bank', $order) }}" class="btn-retry" style="display:inline-flex;">TIẾP TỤC THANH TOÁN →</a>
+                        @elseif(in_array($bankStatus, ['failed', 'cancelled'], true) && $order->payment_status !== 'paid' && !$order->ghn_order_code)
+                            <a href="{{ route('payments.bank', $order) }}" class="btn-retry" style="display:inline-flex;">THANH TOÁN LẠI →</a>
+                        @endif
                     @endif
                 </div>
             </div>

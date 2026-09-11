@@ -15,9 +15,15 @@ class RetryMoMoPayment
 {
     public function handle(Order $order): Payment
     {
+        return $this->handleForProvider($order, 'momo');
+    }
+
+    public function handleForProvider(Order $order, string $provider): Payment
+    {
+        if (! in_array($provider, ['momo', 'bank_qr'], true)) throw new \InvalidArgumentException('Unsupported payment provider.');
         $lastPaymentId = $order->payments()->latest('id')->value('id');
 
-        return DB::transaction(function () use ($order, $lastPaymentId) {
+        return DB::transaction(function () use ($order, $lastPaymentId, $provider) {
             $lastPayment = $lastPaymentId ? Payment::query()->lockForUpdate()->find($lastPaymentId) : null;
             $order = Order::query()->lockForUpdate()->findOrFail($order->id);
 
@@ -55,16 +61,19 @@ class RetryMoMoPayment
                 $coupon->increment('used_count');
             }
 
-            $order->update(['payment_method' => 'momo', 'payment_status' => 'pending', 'status' => 'pending_payment', 'shipping_status' => 'pending']);
+            $order->update(['payment_method' => $provider, 'payment_status' => 'pending', 'status' => 'pending_payment', 'shipping_status' => 'pending']);
 
             $payment = Payment::create([
                 'order_id' => $order->id,
-                'provider' => 'momo',
+                'provider' => $provider,
                 'request_id' => (string) Str::uuid(),
                 'amount' => $order->total,
                 'status' => 'pending',
             ]);
-            $payment->update(['provider_order_id' => $order->number.'-P'.$payment->id]);
+            $providerOrderId = $provider === 'bank_qr'
+                ? now()->format('ymdHis').str_pad((string) $payment->id, 6, '0', STR_PAD_LEFT)
+                : $order->number.'-P'.$payment->id;
+            $payment->update(['provider_order_id' => $providerOrderId]);
             return $payment;
         });
     }
