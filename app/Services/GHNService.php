@@ -61,6 +61,11 @@ class GHNService
         return $this->request('post', '/v2/shipping-order/cancel', ['order_codes' => [$orderCode]]);
     }
 
+    public function getOrderDetail(string $orderCode): array
+    {
+        return $this->request('post', '/v2/shipping-order/detail', ['order_code' => $orderCode]);
+    }
+
     private function request(string $method, string $endpoint, array $payload = [], bool $requiresOrigin = false): array
     {
         if (! $this->isConfigured() || ($requiresOrigin && (

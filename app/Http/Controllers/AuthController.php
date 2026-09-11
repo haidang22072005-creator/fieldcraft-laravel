@@ -29,13 +29,14 @@ class AuthController extends Controller
 
         $request->session()->regenerate();
         $cart->mergeGuestCart($request);
+        if (in_array($request->user()->role, ['admin', 'super-admin'], true)) {
+            return redirect()->intended(route('admin.dashboard'));
+        }
         if (! $request->user()->hasVerifiedEmail()) {
             return redirect()->route('verification.notice');
         }
 
-        return $request->user()->role === 'super-admin'
-            ? redirect()->intended(route('admin.dashboard'))
-            : redirect()->intended(route('settings'));
+        return redirect()->intended(route('settings'));
     }
 
     public function registerCreate(): View { return view('auth.register'); }

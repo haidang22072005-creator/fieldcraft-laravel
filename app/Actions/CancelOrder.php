@@ -6,6 +6,7 @@ use App\Models\Coupon;
 use App\Models\Order;
 use App\Models\ProductVariant;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Validation\ValidationException;
 
 class CancelOrder
 {
@@ -15,6 +16,14 @@ class CancelOrder
             $lockedOrder = Order::query()->lockForUpdate()->findOrFail($order->id);
             if ($lockedOrder->status === 'cancelled') {
                 return null;
+            }
+            if (! in_array($lockedOrder->status, ['pending', 'pending_payment', 'preparing', 'confirmed', 'packing', 'shipping'], true)) {
+                throw ValidationException::withMessages(['order' => 'Đơn hàng không còn trong trạng thái có thể hủy.']);
+            }
+            if ($lockedOrder->ghn_order_code && ! in_array((string) $lockedOrder->shipping_status, [
+                'pending', 'creating', 'created', 'order_created', 'confirmed', 'ready_to_pick',
+            ], true)) {
+                throw ValidationException::withMessages(['order' => 'Đơn giao hàng đã đi quá trạng thái có thể hủy.']);
             }
 
             foreach ($lockedOrder->items as $item) {

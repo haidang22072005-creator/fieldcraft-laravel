@@ -13,6 +13,7 @@ use App\Http\Controllers\PayOSPaymentController;
 use App\Http\Controllers\MoMoSandboxController;
 use App\Http\Controllers\StorefrontController;
 use App\Http\Controllers\SettingsController;
+use App\Http\Controllers\PurchaseController;
 use Illuminate\Foundation\Auth\EmailVerificationRequest;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
@@ -76,8 +77,16 @@ Route::post('/settings/addresses', [SettingsController::class, 'storeAddress'])-
 Route::put('/settings/addresses/{address}', [SettingsController::class, 'updateAddress'])->middleware('auth')->name('settings.addresses.update');
 Route::delete('/settings/addresses/{address}', [SettingsController::class, 'destroyAddress'])->middleware('auth')->name('settings.addresses.destroy');
 Route::get('/purchases', [CheckoutController::class, 'purchases'])->middleware(['auth', 'verified'])->name('purchases');
+Route::middleware(['auth', 'verified'])->prefix('purchases')->name('purchases.')->group(function () {
+    Route::get('/{order}/print', [PurchaseController::class, 'print'])->name('print');
+    Route::get('/{order}/tracking', [PurchaseController::class, 'tracking'])->middleware('throttle:30,1')->name('tracking');
+    Route::post('/{order}/reorder', [PurchaseController::class, 'reorder'])->name('reorder');
+    Route::post('/{order}/cancel', [PurchaseController::class, 'cancel'])->name('cancel');
+    Route::post('/{order}/expedite', [PurchaseController::class, 'expedite'])->middleware('throttle:6,1440')->name('expedite');
+    Route::get('/{order}', [PurchaseController::class, 'show'])->name('show');
+});
 
-Route::middleware(['auth', 'role:super-admin'])->prefix('admin')->name('admin.')->group(function () {
+Route::middleware(['auth', 'role:super-admin,admin'])->prefix('admin')->name('admin.')->group(function () {
     Route::get('/', [OrderController::class, 'dashboard'])->name('dashboard');
     Route::resource('products', ProductController::class)->except('show');
     Route::resource('coupons', CouponController::class)->except('show');

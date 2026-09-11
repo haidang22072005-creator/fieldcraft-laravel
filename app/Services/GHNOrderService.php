@@ -66,7 +66,7 @@ class GHNOrderService
             'to_ward_code' => $toWardCode,
             'to_district_id' => $toDistrictId,
             'service_type_id' => (int) config('services.ghn.service_type_id', 2),
-            'payment_type_id' => 2,
+            'payment_type_id' => 1,
             'required_note' => (string) config('services.ghn.required_note', 'KHONGCHOXEMHANG'),
             'weight' => $this->weightForItems($items),
             'cod_amount' => $order->payment_method === 'cod' ? (int) $order->total : 0,
@@ -98,6 +98,62 @@ class GHNOrderService
         ])->save();
 
         return true;
+    }
+
+    public function trackingForOrder(Order $order): array
+    {
+        $storedStatus = (string) ($order->shipping_status ?: 'pending');
+        $fallback = [
+            'order_code' => $order->ghn_order_code,
+            'status' => $storedStatus,
+            'normalized_status' => $storedStatus,
+            'raw_status' => null,
+            'source' => 'stored',
+        ];
+
+        if (! $order->ghn_order_code) {
+            return $fallback;
+        }
+
+        try {
+            $detail = $this->ghn->getOrderDetail($order->ghn_order_code);
+        } catch (GHNException) {
+            return $fallback;
+        }
+
+        $rawStatus = (string) ($detail['status'] ?? $detail['Status'] ?? '');
+        $normalizedStatus = $this->normalizeTrackingStatus($rawStatus);
+        if ($normalizedStatus === 'unknown') {
+            $normalizedStatus = $storedStatus;
+        }
+
+        return [
+            'order_code' => $order->ghn_order_code,
+            'status' => $normalizedStatus,
+            'normalized_status' => $normalizedStatus,
+            'raw_status' => $rawStatus ?: null,
+            'source' => 'ghn',
+            'updated_at' => $detail['updated_date'] ?? $detail['updated_at'] ?? null,
+            'detail' => $detail,
+        ];
+    }
+
+    private function normalizeTrackingStatus(string $status): string
+    {
+        $status = strtolower(trim(str_replace(['-', ' '], '_', $status)));
+
+        return match (true) {
+            $status === 'order_created', $status === 'created' => 'order_created',
+            $status === 'confirmed' => 'confirmed',
+            $status === 'ready_to_pick', $status === 'ready_to_pickup' => 'ready_to_pick',
+            $status === 'picking' => 'picking',
+            $status === 'transporting' => 'transporting',
+            $status === 'delivering', $status === 'money_collect_delivering', $status === 'delivery_fail' => 'delivering',
+            $status === 'delivered' => 'delivered',
+            in_array($status, ['cancel', 'cancelled', 'canceled'], true) => 'cancelled',
+            str_contains($status, 'return') => 'returned',
+            default => 'unknown',
+        };
     }
 
     public function weightForCartItems(Collection $items): int

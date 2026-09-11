@@ -7,6 +7,7 @@ use App\Models\Order;
 use App\Models\Product;
 use App\Models\ProductVariant;
 use App\Models\User;
+use App\Services\GHNOrderService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Collection;
@@ -139,8 +140,26 @@ class GHNShippingTest extends TestCase
                 && $request['from_province_name'] === 'Hà Nội'
                 && $request['from_district_name'] === 'Quận Nam Từ Liêm'
                 && $request['from_ward_name'] === 'Phường Mỹ Đình 1'
-                && $request['from_district_id'] === 3440;
+                && $request['from_district_id'] === 3440
+                && $request['payment_type_id'] === 1
+                && $request['cod_amount'] === 135000;
         });
+    }
+
+    public function test_ghn_prepaid_order_has_no_cod_amount(): void
+    {
+        $order = app(CreateOrder::class)->handle(new Collection([
+            ['product_variant_id' => $this->variant(price: 100000)->id, 'quantity' => 1],
+        ]), [
+            'user_id' => $this->user()->id, 'payment_method' => 'momo', 'status' => 'pending',
+            'payment_status' => 'paid', 'shipping_fee' => 35000,
+            'to_district_id' => 1600, 'to_ward_code' => '00001',
+        ]);
+
+        $payload = app(GHNOrderService::class)->buildPayload($order);
+        $this->assertSame(1, $payload['payment_type_id']);
+        $this->assertSame(0, $payload['cod_amount']);
+        $this->assertSame(135000, $order->total);
     }
 
     public function test_failed_waybill_leaves_local_order_valid(): void
