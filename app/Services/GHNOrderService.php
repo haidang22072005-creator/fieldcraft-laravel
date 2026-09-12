@@ -100,6 +100,24 @@ class GHNOrderService
         return true;
     }
 
+    /** Confirm the remote state and cancel before local order side effects. */
+    public function cancelWaybill(Order $order): void
+    {
+        $orderCode = (string) $order->ghn_order_code;
+        if ($orderCode === '') {
+            return;
+        }
+
+        $detail = $this->ghn->getOrderDetail($orderCode);
+        $rawStatus = (string) ($detail['status'] ?? $detail['Status'] ?? '');
+        $status = $this->normalizeTrackingStatus($rawStatus);
+        if (! in_array($status, ['order_created', 'confirmed', 'ready_to_pick'], true)) {
+            throw new GHNException('GHN order is not cancellable.');
+        }
+
+        $this->ghn->cancelOrder($orderCode);
+    }
+
     public function trackingForOrder(Order $order): array
     {
         $storedStatus = (string) ($order->shipping_status ?: 'pending');

@@ -33,11 +33,19 @@ class PayOSPaymentController extends Controller
             [$order, $createWaybill] = DB::transaction(function () use ($payment, $data) {
                 $payment = Payment::query()->lockForUpdate()->findOrFail($payment->id);
                 $order = Order::query()->lockForUpdate()->findOrFail($payment->order_id);
-                if (in_array($payment->status, ['failed', 'cancelled'], true) || $order->status === 'cancelled') return [$order, false];
                 if ($payment->status !== 'paid') {
                     $payment->update(['status' => 'paid', 'transaction_id' => (string) ($data['reference'] ?? $data['paymentLinkId'] ?? ''), 'result_code' => 0, 'message' => $data['desc'] ?? 'Thành công', 'paid_at' => now()]);
-                    $order->update(['payment_status' => 'paid', 'status' => $order->status === 'pending_payment' ? 'pending' : $order->status]);
                 }
+                if ($order->status === 'cancelled') {
+                    $payment->update([
+                        'refund_status' => $payment->refund_status === 'refunded' ? 'refunded' : 'required',
+                        'refund_reason' => $payment->refund_reason ?: 'Thanh toán được ghi nhận sau khi đơn đã hủy.',
+                    ]);
+                    $order->update(['payment_status' => 'paid']);
+
+                    return [$order, false];
+                }
+                $order->update(['payment_status' => 'paid', 'status' => $order->status === 'pending_payment' ? 'pending' : $order->status]);
                 $createWaybill = ! $order->ghn_order_code && $order->shipping_status === 'pending' && $order->to_district_id && $order->to_ward_code;
                 if ($createWaybill) $order->update(['shipping_status' => 'creating']);
                 return [$order, $createWaybill];

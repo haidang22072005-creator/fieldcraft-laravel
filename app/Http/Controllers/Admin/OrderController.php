@@ -65,13 +65,7 @@ class OrderController extends Controller
     {
         $status = $request->validate(['status' => ['required', 'in:pending,confirmed,packing,shipping,cancelled']])['status'];
         if ($status === 'cancelled') {
-            $code = $cancelOrder->handle($order);
-            if ($code) {
-                try {
-                    $ghn->cancelOrder($code);
-                } catch (GHNException) {
-                }
-            }
+            $cancelOrder->handle($order);
 
 return back()->with('success', 'Đã cập nhật trạng thái đơn.');
         }

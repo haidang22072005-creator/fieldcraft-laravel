@@ -171,6 +171,28 @@ class MoMoPaymentTest extends TestCase
         $this->assertCount(1, Http::recorded(fn ($request) => str_contains($request->url(), '/shipping-order/create')));
     }
 
+    public function test_late_success_after_local_cancellation_is_recorded_for_refund_without_ghn(): void
+    {
+        $this->fakeGateways();
+        $user = User::factory()->create(['role' => 'customer']);
+        $variant = $this->variant(stock: 2);
+        $this->checkout($user, $variant, 'momo');
+        $payment = Payment::with('order')->firstOrFail();
+
+        $this->postJson(route('momo.ipn'), $this->ipn($payment, 99))->assertOk();
+        $beforeLateCallback = $variant->fresh()->stock;
+        $this->postJson(route('momo.ipn'), $this->ipn($payment, 0))->assertOk();
+        $this->postJson(route('momo.ipn'), $this->ipn($payment, 0))->assertOk();
+
+        $this->assertDatabaseHas('payments', [
+            'id' => $payment->id, 'status' => 'paid', 'refund_status' => 'required',
+            'refund_reason' => 'Thanh toán được ghi nhận sau khi đơn đã hủy.',
+        ]);
+        $this->assertDatabaseHas('orders', ['id' => $payment->order_id, 'status' => 'cancelled', 'payment_status' => 'paid']);
+        $this->assertSame($beforeLateCallback, $variant->fresh()->stock);
+        $this->assertCount(0, Http::recorded(fn ($request) => str_contains($request->url(), '/shipping-order/create')));
+    }
+
     public function test_invalid_signature_and_amount_mismatch_are_rejected(): void
     {
         $this->fakeGateways();

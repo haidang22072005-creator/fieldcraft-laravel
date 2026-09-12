@@ -110,7 +110,10 @@ class OrderUxTest extends TestCase
 
     public function test_customer_cancel_route_reuses_idempotent_cancel_action(): void
     {
-        Http::fake(['*v2/shipping-order/cancel' => Http::response(['code' => 200, 'data' => []])]);
+        Http::fake([
+            '*v2/shipping-order/detail' => Http::response(['code' => 200, 'data' => ['status' => 'ready_to_pick']]),
+            '*v2/shipping-order/cancel' => Http::response(['code' => 200, 'data' => []]),
+        ]);
         $user = $this->user();
         $variant = $this->variant(stock: 3);
         $order = $this->order($user, $variant, 1);
@@ -120,7 +123,7 @@ class OrderUxTest extends TestCase
         $this->actingAs($user)->postJson(route('purchases.cancel', $order))->assertOk();
 
         $this->assertSame(3, $variant->fresh()->stock);
-        Http::assertSentCount(1);
+        Http::assertSentCount(2);
     }
 
     public function test_expedite_request_is_persisted_once(): void

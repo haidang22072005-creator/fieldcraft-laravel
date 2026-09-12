@@ -90,10 +90,11 @@ class MoMoPaymentController extends Controller
             ->whereHas('order', fn ($query) => $query->where('user_id', $request->user()->id))
             ->first();
 
-        if ($payment?->status === 'pending'
+        if ($payment
             && $momo->verifySignature($payload)
             && $this->identityMatches($payment, $payload)
-            && $this->amountMatches($payment, $payload)) {
+            && $this->amountMatches($payment, $payload)
+            && ($payment->status === 'pending' || (int) ($payload['resultCode'] ?? -1) === 0)) {
             $this->processResult($payment, $payload, $cancelOrder, $ghnOrders);
             $payment = $payment->fresh('order');
         }
@@ -132,9 +133,6 @@ class MoMoPaymentController extends Controller
             [$order, $createWaybill] = DB::transaction(function () use ($payment, $payload) {
                 $lockedPayment = Payment::query()->lockForUpdate()->findOrFail($payment->id);
                 $order = Order::query()->lockForUpdate()->findOrFail($lockedPayment->order_id);
-                if (in_array($lockedPayment->status, ['failed', 'cancelled'], true) || $order->status === 'cancelled') {
-                    return [$order, false];
-                }
                 if ($lockedPayment->status !== 'paid') {
                     $lockedPayment->update([
                         'status' => 'paid',
@@ -143,11 +141,22 @@ class MoMoPaymentController extends Controller
                         'message' => $payload['message'] ?? null,
                         'paid_at' => now(),
                     ]);
-                    $order->update([
-                        'payment_status' => 'paid',
-                        'status' => $order->status === 'pending_payment' ? 'pending' : $order->status,
-                    ]);
                 }
+
+                if ($order->status === 'cancelled') {
+                    $lockedPayment->update([
+                        'refund_status' => $lockedPayment->refund_status === 'refunded' ? 'refunded' : 'required',
+                        'refund_reason' => $lockedPayment->refund_reason ?: 'Thanh toán được ghi nhận sau khi đơn đã hủy.',
+                    ]);
+                    $order->update(['payment_status' => 'paid']);
+
+                    return [$order, false];
+                }
+
+                $order->update([
+                    'payment_status' => 'paid',
+                    'status' => $order->status === 'pending_payment' ? 'pending' : $order->status,
+                ]);
 
                 $createWaybill = ! $order->ghn_order_code
                     && $order->shipping_status === 'pending'

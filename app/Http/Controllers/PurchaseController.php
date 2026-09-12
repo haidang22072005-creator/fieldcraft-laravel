@@ -3,7 +3,6 @@
 namespace App\Http\Controllers;
 
 use App\Actions\CancelOrder;
-use App\Exceptions\GHNException;
 use App\Models\Order;
 use App\Services\CartManager;
 use App\Services\GHNOrderService;
@@ -83,26 +82,14 @@ class PurchaseController extends Controller
         return redirect()->route('cart.index')->with('success', $message);
     }
 
-    public function cancel(Request $request, Order $order, CancelOrder $cancelOrder, GHNService $ghn): RedirectResponse|JsonResponse
+    public function cancel(Request $request, Order $order, CancelOrder $cancelOrder): RedirectResponse|JsonResponse
     {
         $this->assertOwner($request, $order);
-        $ghnOrderCode = $cancelOrder->handle($order);
-        $remoteCancelled = true;
-
-        if ($ghnOrderCode) {
-            try {
-                $ghn->cancelOrder($ghnOrderCode);
-            } catch (GHNException) {
-                $remoteCancelled = false;
-            }
-        }
-
-        $message = $remoteCancelled
-            ? 'Đã hủy đơn hàng.'
-            : 'Đã hủy đơn hàng tại cửa hàng; GHN chưa xác nhận hủy vận đơn.';
+        $cancelOrder->handle($order);
+        $message = 'Đã hủy đơn hàng.';
 
         if ($request->expectsJson()) {
-            return response()->json(['message' => $message, 'remote_cancelled' => $remoteCancelled]);
+            return response()->json(['message' => $message, 'remote_cancelled' => true]);
         }
 
         return redirect()->route('purchases')->with('success', $message);

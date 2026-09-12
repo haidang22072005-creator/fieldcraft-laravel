@@ -7,6 +7,7 @@ use App\Models\Payment;
 use App\Models\Product;
 use App\Models\ProductVariant;
 use App\Models\User;
+use App\Actions\CreateOrder;
 use App\Services\PayOSService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\Client\Request as ClientRequest;
@@ -115,6 +116,33 @@ class PayOSPaymentTest extends TestCase
         $this->assertDatabaseHas('payments', ['id' => $payment->id, 'status' => 'paid', 'transaction_id' => 'FT-LAB-001']);
         $this->assertDatabaseHas('orders', ['id' => $payment->order_id, 'payment_status' => 'paid', 'status' => 'pending', 'ghn_order_code' => 'GHN-PAYOS']);
         $this->assertCount(1, Http::recorded(fn ($request) => str_contains($request->url(), '/shipping-order/create')));
+    }
+
+    public function test_late_success_after_local_cancellation_is_recorded_for_refund_without_ghn(): void
+    {
+        $this->fakeGateways();
+        $user = User::factory()->create(['role' => 'customer']);
+        $variant = $this->variant(stock: 2);
+        $order = app(CreateOrder::class)->handle(new \Illuminate\Support\Collection([
+            ['product_variant_id' => $variant->id, 'quantity' => 1],
+        ]), [
+            'user_id' => $user->id, 'payment_method' => 'bank_qr', 'payment_status' => 'pending',
+            'status' => 'pending_payment', 'shipping_fee' => 30000, 'to_district_id' => 1600, 'to_ward_code' => '00001',
+        ]);
+        $payment = Payment::create([
+            'order_id' => $order->id, 'provider' => 'bank_qr', 'request_id' => (string) \Illuminate\Support\Str::uuid(),
+            'provider_order_id' => '123456789', 'amount' => $order->total, 'status' => 'pending',
+        ]);
+        $order->update(['status' => 'cancelled']);
+        $beforeLateCallback = $variant->fresh()->stock;
+
+        $this->postJson(route('payos.webhook'), $this->webhook($payment))->assertOk();
+        $this->postJson(route('payos.webhook'), $this->webhook($payment))->assertOk();
+
+        $this->assertDatabaseHas('payments', ['id' => $payment->id, 'status' => 'paid', 'refund_status' => 'required']);
+        $this->assertDatabaseHas('orders', ['id' => $order->id, 'status' => 'cancelled', 'payment_status' => 'paid']);
+        $this->assertSame($beforeLateCallback, $variant->fresh()->stock);
+        $this->assertCount(0, Http::recorded(fn ($request) => str_contains($request->url(), '/shipping-order/create')));
     }
 
     public function test_failed_payment_can_retry_same_order_with_new_numeric_code_and_paid_cannot_retry(): void

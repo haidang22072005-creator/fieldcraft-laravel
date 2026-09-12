@@ -57,6 +57,22 @@ class GHNShippingTest extends TestCase
         ])->assertOk();
     }
 
+    private function order(User $user, ProductVariant $variant, int $quantity = 1): Order
+    {
+        return app(CreateOrder::class)->handle(new Collection([
+            [
+                'product_variant_id' => $variant->id,
+                'quantity' => $quantity,
+            ],
+        ]), [
+            'user_id' => $user->id,
+            'payment_method' => 'cod',
+            'payment_status' => 'pending',
+            'status' => 'pending',
+            'shipping_fee' => 0,
+        ]);
+    }
+
     public function test_location_endpoints_proxy_ghn(): void
     {
         Http::fake([
@@ -186,7 +202,10 @@ class GHNShippingTest extends TestCase
 
     public function test_cancellation_calls_ghn_and_restores_stock_once(): void
     {
-        Http::fake(['*v2/shipping-order/cancel' => Http::response(['code' => 200, 'data' => []])]);
+        Http::fake([
+            '*v2/shipping-order/detail' => Http::response(['code' => 200, 'data' => ['status' => 'ready_to_pick']]),
+            '*v2/shipping-order/cancel' => Http::response(['code' => 200, 'data' => []]),
+        ]);
         $user = $this->user();
         $variant = $this->variant(stock: 3);
         $order = app(CreateOrder::class)->handle(new Collection([
@@ -203,7 +222,52 @@ class GHNShippingTest extends TestCase
 
         $this->assertSame(3, $variant->fresh()->stock);
         $this->assertDatabaseHas('orders', ['id' => $order->id, 'status' => 'cancelled', 'shipping_status' => 'cancelled']);
-        Http::assertSentCount(1);
-        Http::assertSent(fn ($request) => $request['order_codes'] === ['GHN123']);
+        Http::assertSentCount(2);
+        Http::assertSent(fn ($request) => str_contains($request->url(), '/v2/shipping-order/cancel')
+            && $request['order_codes'] === ['GHN123']);
+        $requests = Http::recorded();
+        $this->assertStringContainsString('/v2/shipping-order/detail', $requests[0][0]->url());
+        $this->assertStringContainsString('/v2/shipping-order/cancel', $requests[1][0]->url());
+    }
+
+    public function test_non_cancellable_ghn_order_keeps_local_order_and_stock_unchanged(): void
+    {
+        Http::fake([
+            '*v2/shipping-order/detail' => Http::response(['code' => 200, 'data' => ['status' => 'transporting']]),
+            '*v2/shipping-order/cancel' => Http::response(['code' => 200, 'data' => []]),
+        ]);
+        $user = $this->user();
+        $variant = $this->variant(stock: 3);
+        $order = $this->order($user, $variant, 2);
+        $order->update(['ghn_order_code' => 'GHN-TRANSPORTING', 'shipping_status' => 'created']);
+
+        $this->actingAs($user)->postJson(route('purchases.cancel', $order))
+            ->assertUnprocessable()
+            ->assertJsonValidationErrors(['order']);
+
+        $this->assertDatabaseHas('orders', ['id' => $order->id, 'status' => 'pending', 'shipping_status' => 'created']);
+        $this->assertSame(1, $variant->fresh()->stock);
+        Http::assertNotSent(fn ($request) => str_contains($request->url(), '/v2/shipping-order/cancel'));
+    }
+
+    public function test_ghn_cancel_failure_keeps_local_order_and_stock_unchanged(): void
+    {
+        Http::fake([
+            '*v2/shipping-order/detail' => Http::response(['code' => 200, 'data' => ['status' => 'ready_to_pick']]),
+            '*v2/shipping-order/cancel' => Http::response(['code' => 500, 'message' => 'rejected'], 500),
+        ]);
+        $user = $this->user();
+        $variant = $this->variant(stock: 3);
+        $order = $this->order($user, $variant, 2);
+        $order->update(['ghn_order_code' => 'GHN-REJECTED', 'shipping_status' => 'created']);
+
+        $this->actingAs($user)->postJson(route('purchases.cancel', $order))
+            ->assertUnprocessable()
+            ->assertJsonValidationErrors(['order']);
+
+        $this->assertDatabaseHas('orders', ['id' => $order->id, 'status' => 'pending', 'shipping_status' => 'created']);
+        $this->assertSame(1, $variant->fresh()->stock);
+        Http::assertSent(fn ($request) => str_contains($request->url(), '/v2/shipping-order/detail'));
+        Http::assertSent(fn ($request) => str_contains($request->url(), '/v2/shipping-order/cancel'));
     }
 }
