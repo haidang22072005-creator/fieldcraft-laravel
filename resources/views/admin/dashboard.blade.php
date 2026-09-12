@@ -533,6 +533,18 @@
         </div>
 
         @if($opsAlerts->isNotEmpty())
+            @php
+                $alertTypeLabels = [
+                    'paid_without_waybill' => 'Chưa có vận đơn',
+                    'shipping_stuck' => 'Đơn giao bị treo',
+                    'ghn_delivered_not_completed' => 'Chưa hoàn tất đơn',
+                    'repeated_payment_failures' => 'Lỗi thanh toán nhiều lần',
+                    'low_stock_variant' => 'Tồn kho thấp',
+                    'important_size_low_stock' => 'Size chủ lực sắp hết',
+                    'low_rating_without_reply' => 'Đánh giá thấp chưa phản hồi',
+                    'pending_confirmation' => 'Chờ xác nhận lâu',
+                ];
+            @endphp
             <div class="alert-cards-grid">
                 @foreach($opsAlerts as $alert)
                     @php
@@ -550,7 +562,7 @@
                             {{ $alert['description'] }}
                         </div>
                         <div style="display:flex;justify-content:space-between;align-items:center;margin-top:4px">
-                            <span class="mono muted" style="font-size:10px">Loại: {{ $alert['type'] }}</span>
+                            <span class="mono muted" style="font-size:10px">Phân loại: {{ $alertTypeLabels[$alert['type']] ?? ($alert['type'] ? ucfirst(str_replace('_', ' ', $alert['type'])) : 'Khác') }}</span>
                             <span class="lime-link" style="font-size:11px">XỬ LÝ NGAY →</span>
                         </div>
                     </a>
@@ -1188,7 +1200,7 @@
                         </div>
                     </div>
                     <span class="status {{ $job->status === 'completed' ? 'completed' : 'pending' }}">
-                        {{ $statusLabels[$job->status] ?? $job->status }}
+                        {{ $statusLabels[$job->status] ?? ($job->status ? ucfirst(str_replace('_', ' ', $job->status)) : 'Khác') }}
                     </span>
                 </div>
 
@@ -1218,7 +1230,7 @@
                             @method('PATCH')
                             <input type="hidden" name="status" value="{{ $nextStep }}">
                             <button type="submit" class="btn lime">
-                                CHUYỂN TRẠNG THÁI: {{ $statusLabels[$nextStep] }} →
+                                CHUYỂN TRẠNG THÁI: {{ $statusLabels[$nextStep] ?? 'TIẾP THEO' }} →
                             </button>
                         </form>
                     </div>
@@ -1240,7 +1252,7 @@
 window.revenueIntelligenceData = @json($revIntel);
 
 document.addEventListener('DOMContentLoaded', () => {
-    // 1. Tab Switching logic (supports URL hash & ?tab=...)
+    // 1. Tab Switching logic (supports URL hash, ?tab=..., and cross-pane anchors)
     const tabBtns = document.querySelectorAll('.dash-tab-btn');
     const tabPanes = document.querySelectorAll('.dash-tab-pane');
 
@@ -1249,22 +1261,77 @@ document.addEventListener('DOMContentLoaded', () => {
         tabPanes.forEach(p => p.classList.toggle('active', p.id === `tab-${tabId}`));
     }
 
+    function resolveTabTarget(rawTarget) {
+        if (!rawTarget) return null;
+        const clean = String(rawTarget).replace(/^#/, '').trim().toLowerCase();
+        if (!clean) return null;
+
+        const aliases = {
+            'finance': { tab: 'revenue', anchor: 'finance' },
+            'revenue': { tab: 'revenue', anchor: null },
+            'restock': { tab: 'inventory', anchor: 'restock' },
+            'inventory': { tab: 'inventory', anchor: null },
+            'customization': { tab: 'teams', anchor: 'customization' },
+            'teams': { tab: 'teams', anchor: null },
+            'overview': { tab: 'overview', anchor: null },
+            'performance': { tab: 'performance', anchor: null },
+        };
+
+        if (aliases[clean]) return aliases[clean];
+
+        if (document.getElementById(`tab-${clean}`)) {
+            return { tab: clean, anchor: null };
+        }
+
+        const anchorEl = document.getElementById(clean);
+        if (anchorEl) {
+            const parentPane = anchorEl.closest('.dash-tab-pane');
+            if (parentPane && parentPane.id.startsWith('tab-')) {
+                return { tab: parentPane.id.replace('tab-', ''), anchor: clean };
+            }
+        }
+
+        return null;
+    }
+
+    function handleTabNavigation(rawTarget) {
+        const resolved = resolveTabTarget(rawTarget);
+        if (!resolved) return;
+        activateTab(resolved.tab);
+
+        if (resolved.anchor) {
+            setTimeout(() => {
+                const el = document.getElementById(resolved.anchor);
+                if (el) {
+                    el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                }
+            }, 80);
+        }
+    }
+
     tabBtns.forEach(btn => {
         btn.addEventListener('click', () => {
             const t = btn.dataset.tab;
             activateTab(t);
-            window.location.hash = t;
+            history.replaceState(null, '', '#' + t);
         });
     });
 
-    // Check hash or URL params
+    // Check URL params and hash on page load
     const urlParams = new URLSearchParams(window.location.search);
     const paramTab = urlParams.get('tab');
-    const hashTab = window.location.hash.replace('#', '');
-    const initialTab = paramTab || hashTab;
-    if (initialTab && document.getElementById(`tab-${initialTab}`)) {
-        activateTab(initialTab);
+    const hashTab = window.location.hash;
+    const initialTarget = hashTab || paramTab;
+    if (initialTarget) {
+        handleTabNavigation(initialTarget);
     }
+
+    // Listen to hashchange event (e.g. sidebar navigation while on the same page)
+    window.addEventListener('hashchange', () => {
+        if (window.location.hash) {
+            handleTabNavigation(window.location.hash);
+        }
+    });
 
     // 2. Revenue Intelligence Interactive Chart
     const rangeBtns = document.querySelectorAll('.rev-range-btn');

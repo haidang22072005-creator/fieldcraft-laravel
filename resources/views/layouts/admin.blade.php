@@ -210,6 +210,7 @@
             flex-direction: column;
             min-height: 100vh;
             min-width: 0;
+            overflow-x: hidden;
         }
         .admin-topbar {
             height: 64px;
@@ -447,13 +448,65 @@
             font-size: 10px;
         }
 
+        .dashboard-grid {
+            display: grid;
+            grid-template-columns: 1fr 380px;
+            gap: 24px;
+            align-items: flex-start;
+        }
+        @media (max-width: 1024px) {
+            .dashboard-grid {
+                grid-template-columns: 1fr;
+            }
+        }
+
+        .timeline {
+            position: relative;
+            padding-left: 24px;
+            display: flex;
+            flex-direction: column;
+            gap: 16px;
+        }
+        .timeline::before {
+            content: '';
+            position: absolute;
+            top: 6px;
+            bottom: 6px;
+            left: 5px;
+            width: 2px;
+            background: var(--border-panel);
+        }
+        .timeline article {
+            position: relative;
+        }
+        .timeline article::before {
+            content: '';
+            position: absolute;
+            left: -24px;
+            top: 5px;
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            background: var(--lime);
+            border: 2px solid var(--bg-panel);
+            box-shadow: 0 0 6px rgba(202, 255, 57, 0.4);
+        }
+        .timeline article:not(:first-child)::before {
+            background: var(--border-sub);
+            box-shadow: none;
+        }
+
         .table-responsive {
+            width: 100%;
             overflow-x: auto;
+            -webkit-overflow-scrolling: touch;
             scrollbar-width: thin;
+            scrollbar-color: var(--border-panel) transparent;
         }
         .table {
             width: 100%;
             border-collapse: collapse;
+            min-width: 600px;
         }
         .table th {
             text-align: left;
@@ -488,22 +541,22 @@
             text-transform: uppercase;
             letter-spacing: .04em;
         }
-        .status.completed, .status.paid, .status.approved {
+        .status.completed, .status.paid, .status.approved, .status.delivered {
             background: var(--success-bg);
             color: var(--lime);
             border: 1px solid var(--success-border);
         }
-        .status.shipping, .status.confirmed, .status.delivering {
+        .status.shipping, .status.confirmed, .status.packing, .status.preparing, .status.delivering, .status.ready_to_pick, .status.picked, .status.transporting, .status.storing, .status.sorting {
             background: var(--info-bg);
             color: var(--info);
             border: 1px solid var(--info-border);
         }
-        .status.pending, .status.pending_payment, .status.unpaid {
+        .status.pending, .status.pending_payment, .status.unpaid, .status.order_created, .status.created, .status.waiting_to_return {
             background: var(--warning-bg);
             color: var(--warning);
             border: 1px solid var(--warning-border);
         }
-        .status.cancelled, .status.failed, .status.rejected {
+        .status.cancelled, .status.failed, .status.rejected, .status.delivery_fail, .status.return_fail, .status.refunded {
             background: var(--danger-bg);
             color: var(--danger);
             border: 1px solid var(--danger-border);
@@ -512,6 +565,12 @@
             background: var(--bg-panel-sub);
             color: var(--text-muted);
             border: 1px solid var(--border-panel);
+        }
+
+        .mascot-avatar, .brand-mascot, .mascot-float {
+            pointer-events: none;
+            user-select: none;
+            max-width: 100%;
         }
 
         .muted { color: var(--text-muted); }
@@ -677,9 +736,9 @@
                     <span class="nav-icon">🚚</span>
                     <span>Vận chuyển</span>
                 </a>
-                <a class="nav-link {{ request()->routeIs('admin.dashboard') && request('tab') === 'finance' ? 'active' : '' }}" href="{{ route('admin.dashboard', ['tab' => 'finance']) }}#finance">
+                <a class="nav-link {{ request()->routeIs('admin.dashboard') && in_array(request('tab'), ['finance', 'revenue']) ? 'active' : '' }}" href="{{ route('admin.dashboard', ['tab' => 'finance']) }}#finance">
                     <span class="nav-icon">💳</span>
-                    <span>Thanh toán</span>
+                    <span>Tài chính & Doanh thu</span>
                 </a>
             </div>
 
@@ -696,7 +755,7 @@
                 </a>
                 <a class="nav-link {{ request()->routeIs('admin.dashboard') && request('tab') === 'restock' ? 'active' : '' }}" href="{{ route('admin.dashboard', ['tab' => 'restock']) }}#restock">
                     <span class="nav-icon">⚡</span>
-                    <span>Nhập hàng</span>
+                    <span>Nhập hàng (Restock)</span>
                 </a>
             </div>
 
@@ -718,7 +777,7 @@
                 <div class="nav-heading">CÁ NHÂN HÓA</div>
                 <a class="nav-link {{ request()->routeIs('admin.dashboard') && request('tab') === 'customization' ? 'active' : '' }}" href="{{ route('admin.dashboard', ['tab' => 'customization']) }}#customization">
                     <span class="nav-icon">🎽</span>
-                    <span>In tên & số</span>
+                    <span>In tên & số (Cá nhân hóa)</span>
                 </a>
             </div>
 
