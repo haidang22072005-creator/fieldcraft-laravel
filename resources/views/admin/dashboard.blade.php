@@ -17,6 +17,62 @@
     $teamsList = \App\Models\TeamProfile::with(['members', 'owner'])->latest()->get();
     $customizationJobs = \App\Models\CustomizationJob::with(['order.user', 'orderItem'])->latest()->take(25)->get();
 
+    // Real Order Kanban data
+    $kanbanOrders = \App\Models\Order::with(['user', 'items.variant.product'])->latest()->take(50)->get();
+    $kanbanPending = $kanbanOrders->where('status', 'pending');
+    $kanbanConfirmed = $kanbanOrders->where('status', 'confirmed');
+    $kanbanPacking = $kanbanOrders->filter(fn($o) => in_array($o->status, ['packing', 'preparing']));
+    $kanbanShipping = $kanbanOrders->where('status', 'shipping');
+    $kanbanCompleted = $kanbanOrders->where('status', 'completed');
+
+    // Real Shipping Hub data
+    $shippingSummary = app(\App\Services\ShippingHubService::class)->summary();
+    $shippingWaybills = \App\Models\Order::query()
+        ->whereNotNull('ghn_order_code')
+        ->with('user')
+        ->latest()
+        ->take(20)
+        ->get();
+
+    // Real Loyalty & VIP Members
+    $loyaltyService = app(\App\Services\LoyaltyService::class);
+    $customerSegmentService = app(\App\Services\CustomerSegmentService::class);
+    $realVipCustomers = $loyaltyService->customerMetrics()
+        ->orderByDesc('completed_spend')
+        ->take(20)
+        ->get()
+        ->map(function ($c) use ($loyaltyService, $customerSegmentService) {
+            $profile = $loyaltyService->profileFromMetrics((array) $c->getAttributes());
+            $segments = $customerSegmentService->fromMetrics((array) $c->getAttributes(), $profile['tier'] ?? 'ROOKIE');
+            return [
+                'user' => $c,
+                'profile' => $profile,
+                'segments' => $segments,
+            ];
+        });
+
+    // Real Football Trends & Provider adapter
+    $footballApi = app(\App\Services\FootballApiAdapter::class);
+    $realTrends = \App\Models\FootballTrend::with('creator')->latest()->get();
+
+    // Real Matchday Campaigns
+    $realCampaigns = \App\Models\MatchdayCampaign::with(['teamProfile', 'coupon', 'products', 'approver'])->latest()->get();
+
+    // Real Cross-sell Rules
+    $realCrossSellRules = \App\Models\CrossSellRule::with('recommendedProduct')->latest()->get();
+
+    // Real Abandoned Carts
+    $realAbandonedCarts = app(\App\Services\AbandonedCartService::class)->carts();
+
+    // Real Second-hand Listings
+    $realSecondHandListings = \App\Models\SecondHandListing::with(['user', 'reviewer'])->latest()->get();
+
+    // Real Boot Passports
+    $realBootPassports = \App\Models\BootPassport::with(['user', 'order', 'variant.product'])->latest()->take(25)->get();
+
+    // Real Activity Logs
+    $realActivityLogs = \App\Models\ActivityLog::with(['actor', 'subject'])->latest()->take(30)->get();
+
     // Chart initial setup for default 30 days
     $defaultRev = $revIntel['30'] ?? reset($revIntel);
     $initialPeriods = $defaultRev['periods'] ?? [];
@@ -383,10 +439,19 @@
 {{-- Top Control Tabs --}}
 <div class="dash-nav-bar" id="dashTabsNav">
     <button class="dash-tab-btn active" data-tab="overview">
-        <span>▦ Tổng quan & Vận hành</span>
+        <span>▦ Tổng quan</span>
         @if($opsAlerts->count() > 0)
-            <span class="tab-badge" style="background:var(--warning);color:#07110d">{{ $opsAlerts->count() }} cảnh báo</span>
+            <span class="tab-badge" style="background:var(--warning);color:#07110d">{{ $opsAlerts->count() }}</span>
         @endif
+    </button>
+    <button class="dash-tab-btn" data-tab="kanban">
+        <span>▥ Order Kanban</span>
+        @if($kanbanPending->count() > 0)
+            <span class="tab-badge" style="background:var(--danger);color:#fff">{{ $kanbanPending->count() }}</span>
+        @endif
+    </button>
+    <button class="dash-tab-btn" data-tab="shipping">
+        <span>🚚 Vận chuyển & GHN</span>
     </button>
     <button class="dash-tab-btn" data-tab="revenue">
         <span>📈 Doanh thu & Tài chính</span>
@@ -402,6 +467,30 @@
     </button>
     <button class="dash-tab-btn" data-tab="teams">
         <span>🛡 Đội bóng & In ấn</span>
+    </button>
+    <button class="dash-tab-btn" data-tab="loyalty">
+        <span>👑 Hạng thành viên</span>
+    </button>
+    <button class="dash-tab-btn" data-tab="trends">
+        <span>🔥 Trend Radar</span>
+    </button>
+    <button class="dash-tab-btn" data-tab="matchday">
+        <span>⚽ Matchday</span>
+    </button>
+    <button class="dash-tab-btn" data-tab="cross-sell">
+        <span>🛒 Cross-selling</span>
+    </button>
+    <button class="dash-tab-btn" data-tab="abandoned-carts">
+        <span>⏳ Giỏ hàng bỏ rơi</span>
+    </button>
+    <button class="dash-tab-btn" data-tab="second-hand">
+        <span>♻ Second-hand Hub</span>
+    </button>
+    <button class="dash-tab-btn" data-tab="passport">
+        <span>🎫 Boot Passport</span>
+    </button>
+    <button class="dash-tab-btn" data-tab="activity-log">
+        <span>📜 Nhật ký hoạt động</span>
     </button>
 </div>
 
@@ -852,10 +941,28 @@
                             $firstVariant = $prod['colors'][0]['variants'][0] ?? null;
                             $totalProdStock = collect($prod['colors'])->flatMap->variants->sum('stock');
                         @endphp
-                        <span class="status muted">Đinh: <b>{{ $firstVariant['stud_type'] ?? 'TF/FG' }}</b></span>
-                        <span class="status muted">Phom: <b>{{ $firstVariant['foot_shape'] ?? 'Vừa' }}</b></span>
-                        <span class="status muted">Mặt sân: <b>{{ $firstVariant['surface_type'] ?? 'Cỏ nhân tạo' }}</b></span>
-                        <span class="status completed">Tổng tồn: <b class="mono">{{ $totalProdStock }}</b> đôi</span>
+                        @php
+                            $stud = $firstVariant['stud_type'] ?? 'TF';
+                            $studBadgeClass = match(strtoupper($stud)) {
+                                'TF' => 'tf',
+                                'FG' => 'fg',
+                                'AG' => 'ag',
+                                'IC' => 'ic',
+                                default => 'tf'
+                            };
+                            $footShape = $firstVariant['foot_shape'] ?? 'standard';
+                            $footShapeLabel = match(strtolower($footShape)) {
+                                'wide', 'bè' => 'Bè (Wide)',
+                                'slim', 'thon' => 'Thon (Slim)',
+                                default => 'Tiêu chuẩn (Standard)'
+                            };
+                        @endphp
+                        <span class="stud-badge {{ $studBadgeClass }}">ĐINH {{ $stud ?: 'TF' }}</span>
+                        <span class="status muted" style="font-size:11px">Phom: <b style="color:var(--text-main)">{{ $footShapeLabel }}</b></span>
+                        <span class="status muted" style="font-size:11px">Mặt sân: <b>{{ $firstVariant['surface_type'] ?? 'Cỏ nhân tạo' }}</b></span>
+                        <span class="status {{ $totalProdStock <= 5 ? 'cancelled' : 'completed' }}">
+                            {{ $totalProdStock <= 5 ? 'Cảnh báo tồn: ' : 'Tổng tồn: ' }}<b class="mono">{{ $totalProdStock }}</b> đôi
+                        </span>
                     </div>
                 </div>
 
@@ -1247,6 +1354,1158 @@
     </section>
 </div>
 
+{{-- ========================================================================= --}}
+{{-- TAB: ORDER KANBAN                                                         --}}
+{{-- ========================================================================= --}}
+<div class="dash-tab-pane" id="tab-kanban">
+    <section class="panel" id="kanban">
+        <div class="toolbar">
+            <div>
+                <span class="toolbar-title">▥ ORDER KANBAN BOARD</span>
+                <div class="muted">Theo dõi quy trình xử lý đơn hàng trực quan 5 giai đoạn từ Chờ xử lý đến Hoàn tất</div>
+            </div>
+            <div class="actions">
+                <a href="{{ route('admin.orders.index') }}" class="btn lime">Xem danh sách đầy đủ</a>
+            </div>
+        </div>
+
+        @php
+            $kanbanColumns = [
+                ['id' => 'pending', 'title' => 'Chờ xử lý', 'orders' => $kanbanPending, 'color' => 'var(--warning)'],
+                ['id' => 'confirmed', 'title' => 'Đã xác nhận', 'orders' => $kanbanConfirmed, 'color' => '#3b82f6'],
+                ['id' => 'packing', 'title' => 'Đang đóng gói', 'orders' => $kanbanPacking, 'color' => '#a855f7'],
+                ['id' => 'shipping', 'title' => 'Đang giao hàng', 'orders' => $kanbanShipping, 'color' => 'var(--lime)'],
+                ['id' => 'completed', 'title' => 'Hoàn tất', 'orders' => $kanbanCompleted, 'color' => 'var(--success-border)'],
+            ];
+            $nextStatusMap = [
+                'pending' => ['status' => 'confirmed', 'label' => 'Xác nhận đơn →'],
+                'confirmed' => ['status' => 'packing', 'label' => 'Đóng gói →'],
+                'packing' => ['status' => 'shipping', 'label' => 'Bàn giao GHN →'],
+            ];
+        @endphp
+
+        <div class="kanban-board">
+            @foreach($kanbanColumns as $col)
+                <div class="kanban-column">
+                    <div class="kanban-col-head">
+                        <div class="kanban-col-title">
+                            <span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:{{ $col['color'] }}"></span>
+                            <span>{{ $col['title'] }}</span>
+                        </div>
+                        <span class="kanban-col-count">{{ $col['orders']->count() }}</span>
+                    </div>
+
+                    <div class="kanban-cards-list">
+                        @forelse($col['orders'] as $order)
+                            @php
+                                $hoursOld = $order->created_at ? $order->created_at->diffInHours(now()) : 0;
+                                $isRed = $order->payment_status === 'failed' || ($col['id'] === 'pending' && $hoursOld > 48);
+                                $isYellow = !$isRed && in_array($col['id'], ['pending', 'confirmed', 'packing']) && $hoursOld > 24;
+                                $healthClass = $isRed ? 'critical' : ($isYellow ? 'warning' : 'healthy');
+                                $healthText = $isRed ? 'CẦN CAN THIỆP' : ($isYellow ? 'CHẬM > 24H' : 'CHUẨN TIẾN ĐỘ');
+                                $nextAction = $nextStatusMap[$col['id']] ?? null;
+                            @endphp
+                            <div class="kanban-card" onclick="window.location.href='{{ route('admin.orders.show', $order) }}'">
+                                <div class="kanban-card-top">
+                                    <span class="kanban-card-id">#ORD-{{ $order->number ?: $order->id }}</span>
+                                    <span class="kanban-health-pill {{ $healthClass }}">{{ $healthText }}</span>
+                                </div>
+
+                                <div class="kanban-card-customer">
+                                    👤 {{ $order->recipient_name ?: ($order->user->name ?? 'Khách mua tại quầy') }}
+                                </div>
+                                <div class="muted" style="font-size:10px;margin-bottom:8px">
+                                    SĐT: {{ $order->recipient_phone ?: ($order->user->phone ?? '—') }}
+                                </div>
+
+                                <div class="kanban-card-meta">
+                                    <span class="kanban-card-total">{{ number_format($order->total) }} ₫</span>
+                                    @if($order->payment_status === 'paid')
+                                        <span class="status completed" style="font-size:9px;padding:2px 6px">ĐÃ THANH TOÁN</span>
+                                    @elseif($order->payment_status === 'failed')
+                                        <span class="status cancelled" style="font-size:9px;padding:2px 6px">LỖI THANH TOÁN</span>
+                                    @else
+                                        <span class="status pending" style="font-size:9px;padding:2px 6px">CHƯA TRẢ</span>
+                                    @endif
+                                </div>
+
+                                <div style="margin-top:8px;padding-top:8px;border-top:1px dashed var(--border-panel);display:flex;justify-content:space-between;align-items:center;font-size:10px">
+                                    @if($order->ghn_order_code)
+                                        <span style="color:var(--lime);font-family:'DM Mono',monospace">🚚 GHN: {{ $order->ghn_order_code }}</span>
+                                    @else
+                                        <span class="muted">Chưa tạo vận đơn</span>
+                                    @endif
+                                    <span class="muted mono">{{ $order->created_at ? $order->created_at->diffForHumans() : '' }}</span>
+                                </div>
+
+                                @if($nextAction)
+                                    <div style="margin-top:10px;padding-top:6px;border-top:1px solid rgba(255,255,255,0.05);display:flex;justify-content:flex-end">
+                                        <button type="button" class="btn small lime" style="font-size:10px;padding:4px 8px" onclick="event.stopPropagation(); updateOrderStatus({{ $order->id }}, '{{ $nextAction['status'] }}')">
+                                            {{ $nextAction['label'] }}
+                                        </button>
+                                    </div>
+                                @endif
+                            </div>
+                        @empty
+                            <div style="padding:28px 12px;text-align:center;border:1px dashed var(--border-panel);border-radius:6px;color:var(--text-muted);font-size:11px">
+                                Không có đơn hàng nào
+                            </div>
+                        @endforelse
+                    </div>
+                </div>
+            @endforeach
+        </div>
+    </section>
+</div>
+
+{{-- ========================================================================= --}}
+{{-- TAB: SHIPPING HUB                                                         --}}
+{{-- ========================================================================= --}}
+<div class="dash-tab-pane" id="tab-shipping">
+    <section class="panel" id="shipping">
+        <div class="toolbar">
+            <div>
+                <span class="toolbar-title">🚚 TRẠM ĐIỀU PHỐI VẬN CHUYỂN (SHIPPING HUB)</span>
+                <div class="muted">Quản lý kết nối các đối tác chuyển phát logistics và theo dõi các vận đơn đang lưu thông</div>
+            </div>
+            <div class="actions">
+                <span class="live-clock"><i class="live-dot"></i> LOGISTICS SYNC ONLINE</span>
+            </div>
+        </div>
+
+        {{-- Carrier Integration Status Cards --}}
+        <div style="display:grid;grid-template-columns:repeat(3, 1fr);gap:16px;margin-bottom:24px">
+            {{-- GHN --}}
+            <div style="background:var(--bg-panel-sub);border:1px solid {{ ($shippingSummary['connected'] ?? false) ? 'var(--lime)' : 'var(--border-panel)' }};border-radius:8px;padding:18px;position:relative;overflow:hidden">
+                <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:12px">
+                    <div>
+                        <div style="font:700 16px/1 'Oswald',sans-serif;color:var(--text-main);margin-bottom:4px">GIAO HÀNG NHANH (GHN)</div>
+                        <div class="muted" style="font-size:11px">Tích hợp API v2 chuẩn thương mại điện tử</div>
+                    </div>
+                    @if($shippingSummary['connected'] ?? false)
+                        <span class="status completed" style="background:var(--success-bg);color:var(--lime);border:1px solid var(--success-border)">
+                            ✓ ĐÃ KẾT NỐI
+                        </span>
+                    @else
+                        <span class="status muted">CHƯA KẾT NỐI</span>
+                    @endif
+                </div>
+                <div style="font-size:12px;color:var(--text-sub);line-height:1.5;margin-bottom:12px">
+                    Đang kích hoạt đồng bộ tự động thời gian thực. Tự động tính cước theo trọng lượng/kích thước và sinh mã vận đơn khi đơn thanh toán.
+                </div>
+                <div style="display:flex;justify-content:space-between;align-items:center;padding-top:10px;border-top:1px solid var(--border-panel);font-size:11px">
+                    <span class="muted">Webhook: <b style="color:var(--lime)">Đang lắng nghe</b></span>
+                    <span class="mono" style="color:var(--text-main)">ShopID: {{ config('services.ghn.shop_id') }}</span>
+                </div>
+            </div>
+
+            {{-- SPX Express --}}
+            <div style="background:var(--bg-panel-sub);border:1px solid var(--border-panel);border-radius:8px;padding:18px">
+                <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:12px">
+                    <div>
+                        <div style="font:700 16px/1 'Oswald',sans-serif;color:var(--text-main);margin-bottom:4px">SPX EXPRESS</div>
+                        <div class="muted" style="font-size:11px">Shopee Xpress B2C</div>
+                    </div>
+                    <span class="status muted">CHƯA KẾT NỐI</span>
+                </div>
+                <div style="font-size:12px;color:var(--text-muted);line-height:1.5;margin-bottom:12px">
+                    Chưa thiết lập tích hợp API. Vui lòng cấu hình App Key & Secret trong phần cài đặt kết nối đối tác khi ký kết hợp đồng.
+                </div>
+                <div style="padding-top:10px;border-top:1px solid var(--border-panel);font-size:11px;color:var(--text-muted)">
+                    Chế độ: <i>Ngoại tuyến (Không kích hoạt giả lập)</i>
+                </div>
+            </div>
+
+            {{-- GrabExpress --}}
+            <div style="background:var(--bg-panel-sub);border:1px solid var(--border-panel);border-radius:8px;padding:18px">
+                <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:12px">
+                    <div>
+                        <div style="font:700 16px/1 'Oswald',sans-serif;color:var(--text-main);margin-bottom:4px">GRABEXPRESS SIÊU TỐC</div>
+                        <div class="muted" style="font-size:11px">Giao hỏa tốc 2 giờ nội thành</div>
+                    </div>
+                    <span class="status muted">CHƯA KẾT NỐI</span>
+                </div>
+                <div style="font-size:12px;color:var(--text-muted);line-height:1.5;margin-bottom:12px">
+                    Chưa kích hoạt dịch vụ giao hỏa tốc 2 giờ nội thành. Tính năng đang trong danh sách chờ tích hợp đối tác vận chuyển nội đô.
+                </div>
+                <div style="padding-top:10px;border-top:1px solid var(--border-panel);font-size:11px;color:var(--text-muted)">
+                    Chế độ: <i>Chưa liên kết tài khoản doanh nghiệp</i>
+                </div>
+            </div>
+        </div>
+
+        {{-- Active Waybills Tracking Table --}}
+        <div style="margin-top:20px">
+            <h3 style="font:700 14px/1 'Oswald',sans-serif;letter-spacing:.04em;color:var(--text-main);text-transform:uppercase;margin-bottom:12px">
+                DANH SÁCH VẬN ĐƠN ĐANG LƯU THÔNG
+            </h3>
+            <div class="table-responsive">
+                <table class="table">
+                    <thead>
+                        <tr>
+                            <th>MÃ VẬN ĐƠN</th>
+                            <th>ĐƠN HÀNG</th>
+                            <th>NGƯỜI NHẬN</th>
+                            <th>ĐƠN VỊ VẬN CHUYỂN</th>
+                            <th>TRẠNG THÁI GIAO HÀNG</th>
+                            <th>CẬP NHẬT CUỐI</th>
+                            <th></th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @forelse($shippingWaybills as $sOrder)
+                            <tr>
+                                <td>
+                                    <b class="mono" style="color:var(--lime)">{{ $sOrder->ghn_order_code }}</b>
+                                </td>
+                                <td>
+                                    <a href="{{ route('admin.orders.show', $sOrder) }}" style="color:var(--text-main);font-weight:700;text-decoration:none">
+                                        #ORD-{{ $sOrder->number ?: $sOrder->id }}
+                                    </a>
+                                </td>
+                                <td>
+                                    <div>{{ $sOrder->recipient_name ?: ($sOrder->user->name ?? 'Khách nhận') }}</div>
+                                    <div class="muted" style="font-size:10px">{{ $sOrder->recipient_phone ?: ($sOrder->user->phone ?? '—') }}</div>
+                                </td>
+                                <td>
+                                    <span class="status completed" style="font-size:10px">Giao Hàng Nhanh (GHN)</span>
+                                </td>
+                                <td>
+                                    @if($sOrder->status === 'completed')
+                                        <span class="status completed">Giao thành công</span>
+                                    @elseif($sOrder->status === 'shipping')
+                                        <span class="status pending" style="background:#172554;color:#60a5fa;border:1px solid #1e40af">Đang giao hàng</span>
+                                    @else
+                                        <span class="status pending">Đang trung chuyển</span>
+                                    @endif
+                                </td>
+                                <td>
+                                    <span class="mono muted" style="font-size:11px">{{ $sOrder->updated_at ? $sOrder->updated_at->format('H:i d/m/Y') : '—' }}</span>
+                                </td>
+                                <td>
+                                    <a class="btn small" href="{{ route('admin.orders.show', $sOrder) }}">Chi tiết →</a>
+                                </td>
+                            </tr>
+                        @empty
+                            <tr>
+                                <td colspan="7" class="muted" style="text-align:center;padding:24px">
+                                    Chưa có vận đơn GHN nào đang lưu thông.
+                                </td>
+                            </tr>
+                        @endforelse
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </section>
+</div>
+
+{{-- ========================================================================= --}}
+{{-- TAB: LOYALTY & VIP TIERS                                                  --}}
+{{-- ========================================================================= --}}
+<div class="dash-tab-pane" id="tab-loyalty">
+    <section class="panel" id="loyalty">
+        <div class="toolbar">
+            <div>
+                <span class="toolbar-title">👑 CHƯƠNG TRÌNH KHÁCH HÀNG THÂN THIẾT (FIELDCRAFT LOYALTY & VIP)</span>
+                <div class="muted">Hệ sinh thái phân hạng thành viên 4 cấp bậc dựa trên điểm tích lũy và doanh số mua sắm</div>
+            </div>
+            <a href="{{ route('admin.customers.index') }}" class="btn lime">Danh sách khách hàng</a>
+        </div>
+
+        {{-- 4 Tiers Showcase --}}
+        <div style="display:grid;grid-template-columns:repeat(4, 1fr);gap:16px;margin-bottom:28px">
+            {{-- ROOKIE --}}
+            <div style="background:var(--bg-panel-sub);border:1px solid var(--border-panel);border-radius:10px;padding:20px;display:flex;flex-direction:column;justify-content:space-between">
+                <div>
+                    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+                        <span class="vip-tier-badge rookie">ROOKIE</span>
+                        <span class="mono muted" style="font-size:11px">MỨC BẮT ĐẦU: 0 ₫</span>
+                    </div>
+                    <div style="font:700 20px/1 'Oswald',sans-serif;color:var(--text-main);margin-bottom:8px">Tân binh sân cỏ</div>
+                    <ul style="margin:0;padding-left:16px;font-size:12px;color:var(--text-sub);line-height:1.6">
+                        <li>Tích điểm: <b>10.000 ₫ = 1 điểm</b></li>
+                        <li>Được hưởng chính sách đổi trả tiêu chuẩn</li>
+                        <li>Tham gia hệ thống bảo hành Fieldcraft</li>
+                    </ul>
+                </div>
+                <div style="margin-top:16px;padding-top:12px;border-top:1px solid var(--border-panel);font-size:11px;color:var(--text-muted)">
+                    Hạng thành viên mặc định khi tạo tài khoản
+                </div>
+            </div>
+
+            {{-- PLAYER --}}
+            <div style="background:var(--bg-panel-sub);border:1px solid #1e3a8a;border-radius:10px;padding:20px;display:flex;flex-direction:column;justify-content:space-between">
+                <div>
+                    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+                        <span class="vip-tier-badge player">PLAYER</span>
+                        <span class="mono muted" style="font-size:11px">CHI TIÊU TỪ 5.000.000 ₫</span>
+                    </div>
+                    <div style="font:700 20px/1 'Oswald',sans-serif;color:var(--text-main);margin-bottom:8px">Cầu thủ năng động</div>
+                    <ul style="margin:0;padding-left:16px;font-size:12px;color:var(--text-sub);line-height:1.6">
+                        <li>Ưu đãi thành viên tích lũy điểm thưởng</li>
+                        <li>Được hỗ trợ ưu tiên đổi size giày</li>
+                        <li>Nhận thông báo sớm các đợt flash sale</li>
+                    </ul>
+                </div>
+                <div style="margin-top:16px;padding-top:12px;border-top:1px solid var(--border-panel);font-size:11px;color:var(--text-muted)">
+                    Tự động thăng hạng khi hoàn tất chi tiêu đạt mốc
+                </div>
+            </div>
+
+            {{-- PRO --}}
+            <div style="background:var(--bg-panel-sub);border:1px solid #7c3aed;border-radius:10px;padding:20px;display:flex;flex-direction:column;justify-content:space-between">
+                <div>
+                    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+                        <span class="vip-tier-badge pro">PRO</span>
+                        <span class="mono muted" style="font-size:11px">CHI TIÊU TỪ 15.000.000 ₫</span>
+                    </div>
+                    <div style="font:700 20px/1 'Oswald',sans-serif;color:var(--text-main);margin-bottom:8px">Cầu thủ chuyên nghiệp</div>
+                    <ul style="margin:0;padding-left:16px;font-size:12px;color:var(--text-sub);line-height:1.6">
+                        <li>Ưu tiên xử lý đơn hàng cá nhân hóa in tên số</li>
+                        <li>Đặc quyền gửi bán trên sàn Second-hand Hub</li>
+                        <li>Hỗ trợ tư vấn form chân và chọn đinh chuyên sâu</li>
+                    </ul>
+                </div>
+                <div style="margin-top:16px;padding-top:12px;border-top:1px solid var(--border-panel);font-size:11px;color:var(--text-muted)">
+                    Phân khúc khách hàng thân thiết VIP Pro
+                </div>
+            </div>
+
+            {{-- FIELDCRAFT ELITE --}}
+            <div style="background:linear-gradient(135deg, rgba(202,255,57,0.08), var(--bg-panel-sub));border:1px solid var(--lime);border-radius:10px;padding:20px;display:flex;flex-direction:column;justify-content:space-between">
+                <div>
+                    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+                        <span class="vip-tier-badge elite">FIELDCRAFT ELITE</span>
+                        <span class="mono" style="font-size:11px;color:var(--lime)">CHI TIÊU TỪ 30.000.000 ₫</span>
+                    </div>
+                    <div style="font:700 20px/1 'Oswald',sans-serif;color:var(--text-main);margin-bottom:8px">Hạng tinh hoa VIP</div>
+                    <ul style="margin:0;padding-left:16px;font-size:12px;color:var(--text-sub);line-height:1.6">
+                        <li>Quyền ưu tiên đặt trước giày phiên bản giới hạn</li>
+                        <li>Cấp Boot Passport chứng nhận quyền lợi đặc biệt</li>
+                        <li>Kênh hỗ trợ chăm sóc khách hàng chuyên biệt</li>
+                    </ul>
+                </div>
+                <div style="margin-top:16px;padding-top:12px;border-top:1px solid var(--border-panel);font-size:11px;color:var(--lime)">
+                    ★ Cấp bậc cao nhất trong hệ sinh thái Fieldcraft
+                </div>
+            </div>
+        </div>
+
+        {{-- Top VIP Customers List --}}
+        <div>
+            <h3 style="font:700 14px/1 'Oswald',sans-serif;letter-spacing:.04em;color:var(--text-main);text-transform:uppercase;margin-bottom:12px">
+                BẢNG XẾP HẠNG THÀNH VIÊN THEO CHI TIÊU THỰC
+            </h3>
+            <div class="table-responsive">
+                <table class="table">
+                    <thead>
+                        <tr>
+                            <th>KHÁCH HÀNG</th>
+                            <th>HẠNG HIỆN TẠI</th>
+                            <th>ĐIỂM TÍCH LŨY</th>
+                            <th>DOANH SỐ HOÀN TẤT & TIẾN ĐỘ</th>
+                            <th>ĐƠN HOÀN TẤT</th>
+                            <th>PHÂN KHÚC KHÁCH HÀNG</th>
+                            <th></th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @forelse($realVipCustomers as $row)
+                            @php
+                                $u = $row['user'];
+                                $p = $row['profile'];
+                                $segs = $row['segments'];
+                                $tierClass = strtolower(str_replace(' ', '-', $p['tier']));
+                            @endphp
+                            <tr>
+                                <td>
+                                    <div style="font-weight:700;color:var(--text-main)">{{ $u->name }}</div>
+                                    <div class="muted mono" style="font-size:11px">{{ $u->email }}</div>
+                                </td>
+                                <td>
+                                    <span class="vip-tier-badge {{ $tierClass }}">{{ $p['tier'] }}</span>
+                                </td>
+                                <td>
+                                    <b class="mono" style="color:var(--lime);font-size:14px">{{ number_format($p['loyalty_points']) }}</b>
+                                    <span class="muted" style="font-size:10px">pts</span>
+                                </td>
+                                <td style="width:230px">
+                                    <div style="display:flex;justify-content:space-between;font-size:10px;margin-bottom:3px">
+                                        <span class="muted">{{ number_format($p['completed_spend']) }} ₫ {{ $p['next_threshold'] ? '/ ' . number_format($p['next_threshold']) . ' ₫' : '(Đạt tối đa)' }}</span>
+                                        <span class="mono" style="color:var(--lime)">{{ $p['progress_percent'] }}%</span>
+                                    </div>
+                                    <div style="height:6px;background:var(--bg-panel-sub);border-radius:3px;overflow:hidden;border:1px solid var(--border-panel)">
+                                        <div style="height:100%;width:{{ $p['progress_percent'] }}%;background:var(--lime)"></div>
+                                    </div>
+                                </td>
+                                <td>
+                                    <span class="mono">{{ $p['completed_order_count'] }} đơn</span>
+                                </td>
+                                <td>
+                                    @if(!empty($segs))
+                                        <div style="display:flex;gap:4px;flex-wrap:wrap">
+                                            @foreach($segs as $seg)
+                                                <span class="status muted" style="font-size:9px;padding:2px 6px">{{ $seg }}</span>
+                                            @endforeach
+                                        </div>
+                                    @else
+                                        <span class="muted" style="font-size:11px">—</span>
+                                    @endif
+                                </td>
+                                <td>
+                                    <a class="btn small" href="{{ route('admin.customers.show', $u) }}">Hồ sơ 360°</a>
+                                </td>
+                            </tr>
+                        @empty
+                            <tr><td colspan="7" class="muted" style="text-align:center;padding:24px">Chưa có dữ liệu thành viên khách hàng.</td></tr>
+                        @endforelse
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </section>
+</div>
+
+{{-- ========================================================================= --}}
+{{-- TAB: FOOTBALL TREND RADAR                                                 --}}
+{{-- ========================================================================= --}}
+<div class="dash-tab-pane" id="tab-trends">
+    <section class="panel" id="trends">
+        <div class="toolbar">
+            <div>
+                <span class="toolbar-title">🔥 RADAR XU HƯỚNG BÓNG ĐÁ (FOOTBALL TREND RADAR)</span>
+                <div class="muted">Phân tích hành vi chọn giày, đặc tính mặt sân và tư vấn phom chân thực tế tại hệ thống Fieldcraft</div>
+            </div>
+            <div class="actions">
+                @if($footballApi->connected())
+                    <span class="status completed">KẾT NỐI: {{ $footballApi->name() }}</span>
+                @else
+                    <span class="status muted">CHƯA KẾT NỐI NHÀ CUNG CẤP NGOẠI VI</span>
+                @endif
+            </div>
+        </div>
+
+        {{-- Data Origin Transparency Notice --}}
+        <div class="notice" style="background:#071c12;border-color:var(--border-sub);margin-bottom:20px">
+            <span>ℹ</span>
+            <div style="font-size:12px;color:var(--text-sub);line-height:1.5">
+                <b style="color:var(--lime)">HỆ THỐNG PHÂN LOẠI NGUỒN DỮ LIỆU:</b> Toàn bộ thông tin được dán nhãn minh bạch giữa
+                <b style="color:#38bdf8">[THỦ CÔNG]</b> (Khảo sát thực tế từ chuyên viên tư vấn giày tại cửa hàng Fieldcraft) và
+                <b style="color:var(--lime)">[DỮ LIỆU NHÀ CUNG CẤP]</b> (Dữ liệu chính thức từ hãng cung cấp kết nối API).
+                @if(!$footballApi->connected())
+                    <i>(Chưa kết nối nhà cung cấp dữ liệu bóng đá - Hệ thống cam kết không sử dụng dữ liệu cào giả lập bên ngoài).</i>
+                @endif
+            </div>
+        </div>
+
+        {{-- Real Trends Stream --}}
+        <div style="display:grid;grid-template-columns:repeat(auto-fill, minmax(280px, 1fr));gap:16px;margin-bottom:28px">
+            @forelse($realTrends as $trend)
+                <div style="background:var(--bg-panel-sub);border:1px solid var(--border-panel);border-radius:8px;padding:16px">
+                    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+                        <span class="status {{ $trend->source === 'manual' ? 'pending' : 'completed' }}" style="font-size:9px;padding:2px 6px">
+                            {{ $trend->source === 'manual' ? '[THỦ CÔNG]' : '[DỮ LIỆU NHÀ CUNG CẤP]' }}
+                        </span>
+                        <span class="mono muted" style="font-size:10px">{{ $trend->created_at ? $trend->created_at->format('d/m/Y') : '' }}</span>
+                    </div>
+                    <div style="font:700 16px/1.2 'Oswald',sans-serif;color:var(--text-main);margin-bottom:6px">
+                        {{ $trend->title }}
+                    </div>
+                    @if($trend->campaign_suggestion)
+                        <div style="font-size:12px;color:var(--text-sub);line-height:1.4;margin-bottom:8px">
+                            <b style="color:var(--lime)">Gợi ý:</b> {{ $trend->campaign_suggestion }}
+                        </div>
+                    @endif
+                    @if(!empty($trend->trend_data))
+                        <div class="mono muted" style="font-size:11px;background:rgba(0,0,0,0.2);padding:6px 8px;border-radius:4px">
+                            @foreach((array)$trend->trend_data as $k => $v)
+                                <span>{{ $k }}: {{ is_array($v) ? json_encode($v, JSON_UNESCAPED_UNICODE) : $v }}</span>
+                                @if(!$loop->last) · @endif
+                            @endforeach
+                        </div>
+                    @endif
+                </div>
+            @empty
+                <div style="grid-column:1/-1;padding:32px 18px;text-align:center;border:1px dashed var(--border-panel);border-radius:8px;color:var(--text-muted);font-size:12px">
+                    Chưa có dữ liệu xu hướng bóng đá.
+                </div>
+            @endforelse
+        </div>
+
+        {{-- 2 Knowledge Guides: Stud Types & Foot Shapes --}}
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px">
+            {{-- Stud Guide --}}
+            <div style="background:var(--bg-panel-sub);border:1px solid var(--border-panel);border-radius:8px;padding:20px">
+                <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
+                    <b style="font:700 14px/1 'Oswald',sans-serif;color:var(--text-main);text-transform:uppercase">
+                        HƯỚNG DẪN MẶT ĐẾ & LOẠI ĐINH THI ĐẤU
+                    </b>
+                    <span class="status muted" style="font-size:9px">[DANH MỤC FIELDCRAFT]</span>
+                </div>
+
+                <div style="display:flex;flex-direction:column;gap:12px;font-size:12px">
+                    <div style="padding:10px;border-left:3px solid var(--lime);background:var(--bg-panel)">
+                        <div><b style="color:var(--lime)">TF (Turf)</b>: Đinh dăm cao su cho sân cỏ nhân tạo phong trào 5-7 người tại Việt Nam.</div>
+                    </div>
+                    <div style="padding:10px;border-left:3px solid #60a5fa;background:var(--bg-panel)">
+                        <div><b style="color:#60a5fa">FG (Firm Ground)</b>: Đinh cao đúc liền dành riêng cho mặt cỏ tự nhiên tiêu chuẩn 11 người.</div>
+                    </div>
+                    <div style="padding:10px;border-left:3px solid #c084fc;background:var(--bg-panel)">
+                        <div><b style="color:#c084fc">AG (Artificial Grass)</b>: Đinh tròn sợi dài cho sân cỏ nhân tạo đạt chuẩn quốc tế FIFA.</div>
+                    </div>
+                    <div style="padding:10px;border-left:3px solid #f59e0b;background:var(--bg-panel)">
+                        <div><b style="color:#f59e0b">IC (Indoor Court)</b>: Đế cao su phẳng bám dính dành cho thi đấu futsal và sàn gỗ trong nhà.</div>
+                    </div>
+                </div>
+            </div>
+
+            {{-- Foot Shape Guide --}}
+            <div style="background:var(--bg-panel-sub);border:1px solid var(--border-panel);border-radius:8px;padding:20px">
+                <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
+                    <b style="font:700 14px/1 'Oswald',sans-serif;color:var(--text-main);text-transform:uppercase">
+                        TƯ VẤN PHOM BÀN CHÂN & DÒNG GIÀY TƯƠNG THÍCH
+                    </b>
+                    <span class="status pending" style="font-size:9px;background:#0c2a38;color:#38bdf8;border-color:#0284c7">[THỦ CÔNG]</span>
+                </div>
+
+                <div style="display:flex;flex-direction:column;gap:14px">
+                    <div style="padding:12px;border:1px solid var(--border-panel);border-radius:6px;background:var(--bg-panel)">
+                        <div style="font-weight:700;color:var(--text-main);margin-bottom:4px">CHÂN BÈ (WIDE FIT)</div>
+                        <div class="muted" style="font-size:11px">Phổ biến tại thị trường Việt Nam. Khuyên dùng các dòng giày thân thiện form bè: Puma Future, Nike Tiempo, adidas Copa.</div>
+                    </div>
+
+                    <div style="padding:12px;border:1px solid var(--border-panel);border-radius:6px;background:var(--bg-panel)">
+                        <div style="font-weight:700;color:var(--text-main);margin-bottom:4px">CHÂN TIÊU CHUẨN (REGULAR FIT)</div>
+                        <div class="muted" style="font-size:11px">Phù hợp đa dạng hầu hết các form giày tiêu chuẩn: adidas Predator, Nike Phantom GX, Mizuno Monarcida.</div>
+                    </div>
+
+                    <div style="padding:12px;border:1px solid var(--border-panel);border-radius:6px;background:var(--bg-panel)">
+                        <div style="font-weight:700;color:var(--text-main);margin-bottom:4px">CHÂN THON (SLIM FIT)</div>
+                        <div class="muted" style="font-size:11px">Dành cho bàn chân mu thấp, thon gọn ôm sát tối đa: Nike Mercurial Vapor, Puma Ultra.</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+</div>
+
+{{-- ========================================================================= --}}
+{{-- TAB: MATCHDAY CONTROL                                                     --}}
+{{-- ========================================================================= --}}
+<div class="dash-tab-pane" id="tab-matchday">
+    <section class="panel" id="matchday">
+        <div class="toolbar">
+            <div>
+                <span class="toolbar-title">⚽ ĐIỀU PHỐI CHIẾN DỊCH MATCHDAY (MATCHDAY CONTROL)</span>
+                <div class="muted">Tự động kích hoạt ưu đãi, áp dụng mã giảm giá và hiển thị sản phẩm theo chiến dịch sự kiện bóng đá</div>
+            </div>
+            <div class="actions">
+                <span class="muted" style="font-size:11px">Quản lý theo thời gian thực</span>
+            </div>
+        </div>
+
+        {{-- Matchday Campaigns Pipeline --}}
+        <div style="display:grid;grid-template-columns:repeat(auto-fill, minmax(280px, 1fr));gap:16px;margin-bottom:24px">
+            @forelse($realCampaigns as $camp)
+                @php
+                    $statusMap = [
+                        'draft' => ['class' => 'muted', 'label' => 'BẢN NHÁP'],
+                        'scheduled' => ['class' => 'pending', 'label' => 'ĐÃ LÊN LỊCH', 'style' => 'background:#1e3a8a;color:#93c5fd;border-color:#2563eb'],
+                        'active' => ['class' => 'completed', 'label' => '● ĐANG CHẠY'],
+                        'ended' => ['class' => 'completed', 'label' => 'ĐÃ KẾT THÚC', 'style' => 'background:#142d1f;color:#6ee7b7;border-color:#059669'],
+                        'cancelled' => ['class' => 'cancelled', 'label' => 'ĐÃ HỦY'],
+                    ];
+                    $st = $statusMap[$camp->status] ?? ['class' => 'muted', 'label' => strtoupper($camp->status)];
+                @endphp
+                <div style="background:var(--bg-panel-sub);border:1px solid var(--border-panel);border-radius:10px;padding:18px;display:flex;flex-direction:column;justify-content:space-between">
+                    <div>
+                        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+                            <span class="status {{ $st['class'] }}" style="font-size:9px;padding:2px 6px;{{ $st['style'] ?? '' }}">{{ $st['label'] }}</span>
+                            @if($camp->coupon)
+                                <span class="mono" style="color:var(--lime);font-size:11px;font-weight:700">Mã: {{ $camp->coupon->code }}</span>
+                            @endif
+                        </div>
+                        <div style="font:700 18px/1.2 'Oswald',sans-serif;color:var(--text-main);margin-bottom:6px">
+                            {{ $camp->name }}
+                        </div>
+                        <div class="muted mono" style="font-size:11px;margin-bottom:10px">
+                            {{ $camp->starts_at ? $camp->starts_at->format('d/m/Y H:i') : 'Ngay lập tức' }}
+                            @if($camp->ends_at)
+                                — {{ $camp->ends_at->format('d/m/Y H:i') }}
+                            @endif
+                        </div>
+                        <div style="font-size:12px;color:var(--text-sub);line-height:1.4;margin-bottom:12px">
+                            @if($camp->teamProfile)
+                                <div>Đội bóng: <b style="color:var(--text-main)">{{ $camp->teamProfile->team_name }}</b></div>
+                            @endif
+                            <div>Sản phẩm áp dụng: <b>{{ $camp->products->count() }}</b> sản phẩm</div>
+                            @if($camp->notes)
+                                <div class="muted" style="margin-top:4px">{{ $camp->notes }}</div>
+                            @endif
+                        </div>
+                    </div>
+                    <div style="padding-top:12px;border-top:1px solid var(--border-panel);display:flex;justify-content:space-between;align-items:center">
+                        <span class="muted mono" style="font-size:10px">{{ $camp->created_at ? $camp->created_at->diffForHumans() : '' }}</span>
+                        @if($camp->status === 'draft')
+                            <button class="btn small lime" type="button" onclick="updateCampaignStatus({{ $camp->id }}, 'scheduled')">Lên lịch →</button>
+                        @elseif($camp->status === 'scheduled')
+                            <button class="btn small lime" type="button" onclick="updateCampaignStatus({{ $camp->id }}, 'active')">Kích hoạt</button>
+                        @elseif($camp->status === 'active')
+                            <button class="btn small" type="button" onclick="updateCampaignStatus({{ $camp->id }}, 'ended')">Kết thúc</button>
+                        @else
+                            <span class="muted" style="font-size:11px">Lưu trữ</span>
+                        @endif
+                    </div>
+                </div>
+            @empty
+                <div style="grid-column:1/-1;padding:32px 18px;text-align:center;border:1px dashed var(--border-panel);border-radius:8px;color:var(--text-muted);font-size:12px">
+                    Chưa có chiến dịch Matchday nào.
+                </div>
+            @endforelse
+        </div>
+    </section>
+</div>
+
+{{-- ========================================================================= --}}
+{{-- TAB: CROSS-SELLING RULE BUILDER                                           --}}
+{{-- ========================================================================= --}}
+<div class="dash-tab-pane" id="tab-cross-sell">
+    <section class="panel" id="cross-sell">
+        <div class="toolbar">
+            <div>
+                <span class="toolbar-title">🛒 TRÌNH THIẾT LẬP BÁN CHÉO THÔNG MINH (CROSS-SELLING RULE BUILDER)</span>
+                <div class="muted">Tự động gợi ý phụ kiện và sản phẩm đi kèm khi khách hàng bỏ hàng vào giỏ để tối ưu giá trị đơn (AOV)</div>
+            </div>
+            <div class="actions">
+                <span class="muted" style="font-size:11px">Áp dụng tự động trên giỏ hàng</span>
+            </div>
+        </div>
+
+        <div style="display:flex;flex-direction:column;gap:14px;margin-bottom:24px">
+            @forelse($realCrossSellRules as $rule)
+                <div style="background:var(--bg-panel-sub);border:1px solid var(--border-panel);border-radius:8px;padding:18px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:14px">
+                    <div style="flex:1;min-width:280px">
+                        <div style="display:flex;align-items:center;gap:10px;margin-bottom:6px">
+                            @if($rule->is_active)
+                                <span class="status completed" style="font-size:9px">ĐANG KÍCH HOẠT</span>
+                            @else
+                                <span class="status muted" style="font-size:9px">TẠM DỪNG</span>
+                            @endif
+                            <span class="mono" style="font-weight:700;color:var(--lime)">
+                                Quy tắc #CR-{{ $rule->id }}: [{{ strtoupper($rule->source_type) }}] {{ $rule->source_value }}
+                            </span>
+                        </div>
+                        <div style="font-size:13px;color:var(--text-main);margin-bottom:4px">
+                            <b>Điều kiện kích hoạt:</b> Khi giỏ hàng chứa sản phẩm thuộc <b>{{ $rule->source_type }}: {{ $rule->source_value }}</b>
+                        </div>
+                        <div style="font-size:12px;color:var(--text-sub)">
+                            <b>Sản phẩm gợi ý kèm:</b>
+                            <span style="color:var(--lime);font-weight:700">
+                                {{ $rule->recommendedProduct ? ($rule->recommendedProduct->brand . ' ' . $rule->recommendedProduct->name) : 'Sản phẩm đã xóa' }}
+                            </span>
+                            @if($rule->recommendedProduct)
+                                ({{ number_format($rule->recommendedProduct->price) }} ₫)
+                            @endif
+                        </div>
+                    </div>
+                    <div style="display:flex;align-items:center;gap:20px">
+                        <div style="text-align:right">
+                            <div class="muted" style="font-size:10px;text-transform:uppercase">Độ ưu tiên</div>
+                            <div class="mono" style="font-size:16px;font-weight:700;color:var(--text-main)">P-{{ $rule->priority }}</div>
+                        </div>
+                    </div>
+                </div>
+            @empty
+                <div style="padding:32px 18px;text-align:center;border:1px dashed var(--border-panel);border-radius:8px;color:var(--text-muted);font-size:12px">
+                    Chưa có quy tắc bán chéo nào.
+                </div>
+            @endforelse
+        </div>
+    </section>
+</div>
+
+{{-- ========================================================================= --}}
+{{-- TAB: ABANDONED CART RADAR                                                 --}}
+{{-- ========================================================================= --}}
+<div class="dash-tab-pane" id="tab-abandoned-carts">
+    <section class="panel" id="abandoned-carts">
+        <div class="toolbar">
+            <div>
+                <span class="toolbar-title">⏳ RADAR GIỎ HÀNG BỊ BỎ QUÊN (ABANDONED CART RADAR)</span>
+                <div class="muted">Hệ thống phát hiện giỏ hàng tồn đọng chưa thanh toán và hỗ trợ kích hoạt mã giải cứu cứu vãn doanh thu</div>
+            </div>
+            <button type="button" class="btn lime" onclick="triggerBatchRescue()">⚡ KÍCH HOẠT MÃ CỨU GIỎ HÀNG LOẠT</button>
+        </div>
+
+        {{-- 4 Stat Cards --}}
+        <div style="display:grid;grid-template-columns:repeat(4, 1fr);gap:16px;margin-bottom:24px">
+            <div style="background:var(--bg-panel-sub);border:1px solid var(--border-panel);border-radius:8px;padding:16px">
+                <div class="muted" style="font-size:11px;text-transform:uppercase">Giỏ hàng đang treo</div>
+                <div class="mono" style="font-size:26px;font-weight:700;color:var(--text-main);margin-top:4px">{{ $realAbandonedCarts->count() }} giỏ</div>
+            </div>
+            <div style="background:var(--bg-panel-sub);border:1px solid var(--border-panel);border-radius:8px;padding:16px">
+                <div class="muted" style="font-size:11px;text-transform:uppercase">Tổng giá trị giỏ treo</div>
+                <div class="mono" style="font-size:26px;font-weight:700;color:var(--lime);margin-top:4px">{{ number_format($realAbandonedCarts->sum('value')) }} ₫</div>
+            </div>
+            <div style="background:var(--bg-panel-sub);border:1px solid var(--border-panel);border-radius:8px;padding:16px">
+                <div class="muted" style="font-size:11px;text-transform:uppercase">Đã gửi ưu đãi cứu giỏ</div>
+                <div class="mono" style="font-size:26px;font-weight:700;color:var(--lime);margin-top:4px">{{ $realAbandonedCarts->whereNotNull('contacted_at')->count() }} giỏ</div>
+            </div>
+            <div style="background:var(--bg-panel-sub);border:1px solid var(--border-panel);border-radius:8px;padding:16px">
+                <div class="muted" style="font-size:11px;text-transform:uppercase">Chờ xử lý cứu giỏ</div>
+                <div class="mono" style="font-size:26px;font-weight:700;color:var(--warning);margin-top:4px">{{ $realAbandonedCarts->whereNull('contacted_at')->count() }} giỏ</div>
+            </div>
+        </div>
+
+        {{-- Abandoned Carts Table --}}
+        <div class="table-responsive">
+            <table class="table">
+                <thead>
+                    <tr>
+                        <th>KHÁCH HÀNG</th>
+                        <th>SẢN PHẨM TRONG GIỎ</th>
+                        <th>TỔNG TIỀN</th>
+                        <th>HOẠT ĐỘNG GẦN NHẤT</th>
+                        <th>TRẠNG THÁI</th>
+                        <th>THAO TÁC CỨU GIỎ</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @forelse($realAbandonedCarts as $cart)
+                        <tr>
+                            <td>
+                                <div style="font-weight:700;color:var(--text-main)">{{ $cart['customer']?->name ?? 'Khách vãng lai' }}</div>
+                                <div class="muted mono" style="font-size:11px">{{ $cart['customer']?->email ?? $cart['customer']?->phone ?? '—' }}</div>
+                            </td>
+                            <td>
+                                @foreach($cart['items'] as $item)
+                                    <div style="font-size:12px;color:var(--text-main)">
+                                        {{ $item->variant?->product?->name ?? 'Sản phẩm' }}
+                                        @if($item->variant?->size)
+                                            <span class="muted">(Size {{ $item->variant->size }})</span>
+                                        @endif
+                                        <span class="mono" style="color:var(--lime)">x{{ $item->quantity }}</span>
+                                    </div>
+                                @endforeach
+                            </td>
+                            <td>
+                                <b class="mono" style="color:var(--lime);font-size:14px">{{ number_format($cart['value']) }} ₫</b>
+                            </td>
+                            <td>
+                                <div class="mono" style="font-size:11px;color:var(--text-sub)">
+                                    {{ $cart['last_activity_at'] ? \Carbon\Carbon::parse($cart['last_activity_at'])->format('d/m/Y H:i') : '—' }}
+                                </div>
+                                <div class="muted" style="font-size:10px">
+                                    {{ $cart['last_activity_at'] ? \Carbon\Carbon::parse($cart['last_activity_at'])->diffForHumans() : '' }}
+                                </div>
+                            </td>
+                            <td>
+                                @if($cart['contacted_at'])
+                                    <span class="status completed" style="background:#142d1f;color:#6ee7b7;border-color:#059669">
+                                        ĐÃ LIÊN HỆ
+                                    </span>
+                                    @if($cart['contact_coupon'])
+                                        <div class="muted mono" style="font-size:10px;margin-top:2px">Mã: {{ $cart['contact_coupon']->code }}</div>
+                                    @endif
+                                @else
+                                    <span class="status pending" style="background:#1c1917;color:#f59e0b;border-color:#b45309">
+                                        CHỜ LIÊN HỆ
+                                    </span>
+                                @endif
+                            </td>
+                            <td>
+                                @if($cart['contacted_at'])
+                                    <span class="muted" style="font-size:11px">Đã gửi lúc {{ \Carbon\Carbon::parse($cart['contacted_at'])->format('d/m H:i') }}</span>
+                                @else
+                                    <button type="button" class="btn small lime" onclick="contactAbandonedCart({{ $cart['id'] }})">
+                                        GỬI VOUCHER CỨU GIỎ ⚡
+                                    </button>
+                                @endif
+                            </td>
+                        </tr>
+                    @empty
+                        <tr>
+                            <td colspan="6" style="text-align:center;padding:36px 16px;color:var(--text-muted)">
+                                <div style="font-size:24px;margin-bottom:8px">🛒</div>
+                                <div style="font-weight:700;color:var(--text-main);margin-bottom:4px">Không có giỏ hàng bị bỏ quên nào cần xử lý.</div>
+                                <div style="font-size:12px">Tất cả khách hàng đều hoàn tất đơn hoặc chưa vượt ngưỡng thời gian lưu giỏ ({{ config('services.loyalty.abandoned_cart_hours', 24) }} giờ).</div>
+                            </td>
+                        </tr>
+                    @endforelse
+                </tbody>
+            </table>
+        </div>
+    </section>
+</div>
+
+{{-- ========================================================================= --}}
+{{-- TAB: SECOND-HAND HUB                                                      --}}
+{{-- ========================================================================= --}}
+<div class="dash-tab-pane" id="tab-second-hand">
+    <section class="panel" id="second-hand">
+        <div class="toolbar">
+            <div>
+                <span class="toolbar-title">♻ TRẠM KIỂM ĐỊNH & TRAO ĐỔI GIÀY SECOND-HAND (SECOND-HAND HUB)</span>
+                <div class="muted">Hàng đợi kiểm duyệt chất lượng, đánh giá tình trạng thực tế và niêm yết giày ký gửi chính hãng</div>
+            </div>
+            <div class="actions">
+                <span class="status completed">TRẠM ĐÁNH GIÁ & KIỂM DUYỆT</span>
+            </div>
+        </div>
+
+        {{-- Filter Sub-Tabs --}}
+        <div style="display:flex;gap:8px;margin-bottom:18px;flex-wrap:wrap">
+            <button class="btn small lime sh-filter-btn" data-filter="all">TẤT CẢ ({{ $realSecondHandListings->count() }})</button>
+            <button class="btn small sh-filter-btn" data-filter="submitted">MỚI GỬI ({{ $realSecondHandListings->where('status', 'submitted')->count() }})</button>
+            <button class="btn small sh-filter-btn" data-filter="under_review">ĐANG KIỂM ĐỊNH ({{ $realSecondHandListings->where('status', 'under_review')->count() }})</button>
+            <button class="btn small sh-filter-btn" data-filter="approved">ĐÃ ĐẠT CHUẨN ({{ $realSecondHandListings->where('status', 'approved')->count() }})</button>
+            <button class="btn small sh-filter-btn" data-filter="listed">ĐÃ NIÊM YẾT ({{ $realSecondHandListings->where('status', 'listed')->count() }})</button>
+            <button class="btn small sh-filter-btn" data-filter="sold">ĐÃ BÁN ({{ $realSecondHandListings->where('status', 'sold')->count() }})</button>
+        </div>
+
+        {{-- Second-hand Items Table --}}
+        <div class="table-responsive">
+            <table class="table" id="secondHandTable">
+                <thead>
+                    <tr>
+                        <th>SẢN PHẨM & TÌNH TRẠNG</th>
+                        <th>THƯƠNG HIỆU & SIZE</th>
+                        <th>GIÁ KÝ GỬI & HOA HỒNG</th>
+                        <th>NGƯỜI KÝ GỬI</th>
+                        <th>PHƯƠNG THỨC CHI TRẢ</th>
+                        <th>TRẠNG THÁI</th>
+                        <th>THAO TÁC</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @forelse($realSecondHandListings as $sh)
+                        <tr data-status="{{ $sh->status }}">
+                            <td>
+                                <div style="font-weight:700;color:var(--text-main)">{{ $sh->product_name }}</div>
+                                <div style="display:flex;align-items:center;gap:6px;margin-top:3px">
+                                    <span class="status completed" style="font-size:9px">TÌNH TRẠNG: {{ $sh->condition }}</span>
+                                </div>
+                            </td>
+                            <td>
+                                <span class="stud-badge tf">{{ $sh->brand }}</span>
+                                <span class="mono" style="font-size:12px;font-weight:700;margin-left:4px">Size {{ $sh->size }}</span>
+                            </td>
+                            <td>
+                                <div class="mono" style="font-weight:700;color:var(--lime);font-size:14px">{{ number_format($sh->asking_price) }} ₫</div>
+                                @if($sh->commission_amount > 0)
+                                    <div class="muted mono" style="font-size:10px">Hoa hồng: {{ number_format($sh->commission_amount) }} ₫</div>
+                                @endif
+                            </td>
+                            <td>
+                                <div>{{ $sh->user?->name ?? 'Người dùng #'.$sh->user_id }}</div>
+                                <div class="muted mono" style="font-size:10px">{{ $sh->user?->phone ?? $sh->user?->email ?? '—' }}</div>
+                            </td>
+                            <td>
+                                @if($sh->payout_method === 'voucher')
+                                    <div style="font-size:11px;color:var(--lime)">Voucher mua hàng</div>
+                                    @if($sh->voucher_bonus > 0)
+                                        <div class="muted" style="font-size:10px">+ Thưởng {{ number_format($sh->voucher_bonus) }} ₫</div>
+                                    @endif
+                                @else
+                                    <div style="font-size:11px;color:var(--text-sub)">Tiền mặt / Chuyển khoản</div>
+                                @endif
+                            </td>
+                            <td>
+                                @switch($sh->status)
+                                    @case('submitted')
+                                        <span class="status pending">MỚI GỬI DUYỆT</span>
+                                        @break
+                                    @case('under_review')
+                                        <span class="status pending" style="background:#0c2a38;color:#38bdf8;border-color:#0284c7">ĐANG KIỂM ĐỊNH</span>
+                                        @break
+                                    @case('approved')
+                                        <span class="status completed" style="background:#142d1f;color:#6ee7b7;border-color:#059669">ĐÃ ĐẠT CHUẨN</span>
+                                        @break
+                                    @case('listed')
+                                        <span class="status completed">ĐANG NIÊM YẾT</span>
+                                        @break
+                                    @case('sold')
+                                        <span class="status completed" style="background:#262626;color:#a3a3a3;border-color:#404040">ĐÃ BÁN</span>
+                                        @break
+                                    @case('rejected')
+                                        <span class="status cancelled">TỪ CHỐI</span>
+                                        @break
+                                    @case('cancelled')
+                                        <span class="status cancelled">ĐÃ HỦY</span>
+                                        @break
+                                    @default
+                                        <span class="status muted">{{ $sh->status }}</span>
+                                @endswitch
+                            </td>
+                            <td>
+                                <div style="display:flex;gap:6px;flex-wrap:wrap">
+                                    @if($sh->status === 'submitted')
+                                        <button type="button" class="btn small lime" onclick="updateSecondHandStatus({{ $sh->id }}, 'under_review')">
+                                            Kiểm định
+                                        </button>
+                                    @elseif($sh->status === 'under_review')
+                                        <button type="button" class="btn small lime" onclick="updateSecondHandStatus({{ $sh->id }}, 'approved')">
+                                            Duyệt đạt chuẩn
+                                        </button>
+                                        <button type="button" class="btn small" onclick="updateSecondHandStatus({{ $sh->id }}, 'rejected')">
+                                            Từ chối
+                                        </button>
+                                    @elseif($sh->status === 'approved')
+                                        <button type="button" class="btn small lime" onclick="updateSecondHandStatus({{ $sh->id }}, 'listed')">
+                                            Niêm yết
+                                        </button>
+                                    @elseif($sh->status === 'listed')
+                                        <button type="button" class="btn small" onclick="updateSecondHandStatus({{ $sh->id }}, 'sold')">
+                                            Đã bán
+                                        </button>
+                                    @else
+                                        <span class="muted" style="font-size:11px">—</span>
+                                    @endif
+                                </div>
+                            </td>
+                        </tr>
+                    @empty
+                        <tr>
+                            <td colspan="7" style="text-align:center;padding:36px 16px;color:var(--text-muted)">
+                                <div style="font-size:24px;margin-bottom:8px">♻</div>
+                                <div style="font-weight:700;color:var(--text-main);margin-bottom:4px">Chưa có sản phẩm second-hand chờ xử lý.</div>
+                                <div style="font-size:12px">Các yêu cầu ký gửi, kiểm định giày đã qua sử dụng từ cộng đồng sẽ hiển thị tại đây.</div>
+                            </td>
+                        </tr>
+                    @endforelse
+                </tbody>
+            </table>
+        </div>
+    </section>
+</div>
+
+{{-- ========================================================================= --}}
+{{-- TAB: BOOT PASSPORT PREVIEW                                                --}}
+{{-- ========================================================================= --}}
+<div class="dash-tab-pane" id="tab-passport">
+    <section class="panel" id="passport">
+        <div class="toolbar">
+            <div>
+                <span class="toolbar-title">🎫 HỘ CHIẾU GIÀY ĐÁ BÓNG ĐIỆN TỬ (FIELDCRAFT BOOT PASSPORT)</span>
+                <div class="muted">Hệ thống định danh số, quản lý nguồn gốc sản phẩm và lịch sử bảo hành cho từng đôi giày</div>
+            </div>
+            <div class="actions">
+                <span class="status completed">ĐỊNH DANH SỐ & BẢO HÀNH CHÍNH HÃNG</span>
+            </div>
+        </div>
+
+        {{-- Interactive Passport Lookup Search --}}
+        <div style="background:var(--bg-panel-sub);border:1px solid var(--border-panel);border-radius:8px;padding:16px;margin-bottom:24px;display:flex;gap:12px;align-items:center;flex-wrap:wrap">
+            <span class="muted" style="font-size:12px;font-weight:700">TRA CỨU HỘ CHIẾU:</span>
+            <input id="passportSearchInput" value="{{ $realBootPassports->first()?->passport_code ?? '' }}" placeholder="Nhập mã Passport VD: FC-PASS-..." style="flex:1;min-width:240px;background:var(--bg-input);border:1px solid var(--border-panel);color:var(--lime);padding:8px 12px;border-radius:6px;font-family:'DM Mono',monospace;font-size:13px;font-weight:700">
+            <button type="button" class="btn lime" onclick="lookupPassport()">TRA CỨU HỘ CHIẾU</button>
+        </div>
+
+        @if($realBootPassports->isNotEmpty())
+            {{-- Passports List Table --}}
+            <div class="table-responsive" style="margin-bottom:28px">
+                <table class="table">
+                    <thead>
+                        <tr>
+                            <th>MÃ PASSPORT</th>
+                            <th>SẢN PHẨM & PHỐI MÀU</th>
+                            <th>ĐINH & SIZE</th>
+                            <th>CHỦ SỞ HỮU</th>
+                            <th>NGÀY MUA</th>
+                            <th>HẠN BẢO HÀNH</th>
+                            <th>THAO TÁC</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach($realBootPassports as $bp)
+                            @php
+                                $bpProdName = $bp->variant?->product?->name ?? ($bp->variant_snapshot['name'] ?? 'Giày đá bóng chính hãng');
+                                $bpColor = $bp->color ?? ($bp->variant_snapshot['color'] ?? '—');
+                                $bpSize = $bp->size ?? ($bp->variant_snapshot['size'] ?? '—');
+                                $bpStud = $bp->stud_type ?? ($bp->variant_snapshot['stud_type'] ?? 'TF');
+                                $bpOrderCode = $bp->order?->order_number ?? ($bp->order_id ? 'ORD-'.$bp->order_id : '—');
+                                $bpDate = $bp->purchase_date ? \Carbon\Carbon::parse($bp->purchase_date)->format('d/m/Y') : '—';
+                                $bpWarranty = $bp->warranty_until ? \Carbon\Carbon::parse($bp->warranty_until)->format('d/m/Y') : 'Hết hạn bảo hành';
+                                $bpOwner = $bp->user?->name ?? 'Khách hàng';
+                            @endphp
+                            <tr data-passport-code="{{ $bp->passport_code }}">
+                                <td>
+                                    <span class="mono" style="color:var(--lime);font-size:12px;font-weight:700">
+                                        🎫 {{ $bp->passport_code }}
+                                    </span>
+                                </td>
+                                <td>
+                                    <div style="font-weight:700;color:var(--text-main)">{{ $bpProdName }}</div>
+                                    <div class="muted" style="font-size:11px">Phối màu: {{ $bpColor }}</div>
+                                </td>
+                                <td>
+                                    <span class="stud-badge tf">{{ $bpStud }}</span>
+                                    <span class="mono" style="font-size:12px;font-weight:700;margin-left:4px">Size {{ $bpSize }}</span>
+                                </td>
+                                <td>
+                                    <div>{{ $bpOwner }}</div>
+                                    <div class="muted mono" style="font-size:10px">{{ $bp->user?->phone ?? $bp->user?->email ?? '—' }}</div>
+                                </td>
+                                <td>
+                                    <div class="mono" style="font-size:11px;color:var(--text-sub)">{{ $bpDate }}</div>
+                                    <div class="muted mono" style="font-size:10px">Đơn: #{{ $bpOrderCode }}</div>
+                                </td>
+                                <td>
+                                    <span class="mono" style="font-size:11px;color:var(--lime)">{{ $bpWarranty }}</span>
+                                </td>
+                                <td>
+                                    <button type="button" class="btn small btn-view-pass" onclick="selectPassportCard('{{ $bp->passport_code }}', '{{ addslashes($bpProdName) }}', '{{ addslashes($bpColor) }}', '{{ addslashes($bpSize) }}', '{{ addslashes($bpStud) }}', '{{ addslashes($bpOrderCode) }}', '{{ addslashes($bpDate) }}', '{{ addslashes($bpWarranty) }}', '{{ addslashes($bpOwner) }}', 'THÀNH VIÊN')">
+                                        Xem thẻ số
+                                    </button>
+                                </td>
+                            </tr>
+                        @endforeach
+                    </tbody>
+                </table>
+            </div>
+
+            {{-- Comprehensive Digital Passport Card Display --}}
+            @php
+                $firstPass = $realBootPassports->first();
+                $fName = $firstPass->variant?->product?->name ?? ($firstPass->variant_snapshot['name'] ?? 'Giày đá bóng chính hãng');
+                $fColor = $firstPass->color ?? ($firstPass->variant_snapshot['color'] ?? 'Tiêu chuẩn');
+                $fSize = $firstPass->size ?? ($firstPass->variant_snapshot['size'] ?? '—');
+                $fStud = $firstPass->stud_type ?? ($firstPass->variant_snapshot['stud_type'] ?? 'TF');
+                $fOrder = $firstPass->order?->order_number ?? ($firstPass->order_id ? 'ORD-'.$firstPass->order_id : '—');
+                $fDate = $firstPass->purchase_date ? \Carbon\Carbon::parse($firstPass->purchase_date)->format('d/m/Y') : '—';
+                $fWarranty = $firstPass->warranty_until ? 'Đến '.\Carbon\Carbon::parse($firstPass->warranty_until)->format('d/m/Y') : 'Hết hạn bảo hành';
+                $fOwner = $firstPass->user?->name ?? 'Khách hàng';
+            @endphp
+            <div style="display:flex;justify-content:center;margin-bottom:24px">
+                <div class="passport-card-box" style="max-width:540px;width:100%">
+                    <div class="passport-nfc-tag">
+                        <span>HỘ CHIẾU SỐ</span>
+                        <span style="font-size:10px">FIELDCRAFT PASSPORT</span>
+                    </div>
+
+                    <div class="passport-code-banner">
+                        <span id="cardPassCode">{{ $firstPass->passport_code }}</span>
+                    </div>
+
+                    <div class="passport-shoe-title" id="cardPassName">
+                        {{ $fName }}
+                    </div>
+                    <div class="passport-shoe-sub" id="cardPassColor">
+                        Phối màu: {{ $fColor }}
+                    </div>
+
+                    <div class="passport-spec-grid">
+                        <div class="passport-spec-item">
+                            <div class="passport-spec-lbl">Cỡ giày & Phom dáng</div>
+                            <div class="passport-spec-val" id="cardPassSize">Size {{ $fSize }}</div>
+                        </div>
+                        <div class="passport-spec-item">
+                            <div class="passport-spec-lbl">Loại đinh mặt sân</div>
+                            <div class="passport-spec-val" id="cardPassStud">{{ $fStud }}</div>
+                        </div>
+                        <div class="passport-spec-item">
+                            <div class="passport-spec-lbl">Đơn hàng kích hoạt</div>
+                            <div class="passport-spec-val" id="cardPassOrder">#{{ $fOrder }} · {{ $fDate }}</div>
+                        </div>
+                        <div class="passport-spec-item">
+                            <div class="passport-spec-lbl">Thời hạn bảo hành keo đế</div>
+                            <div class="passport-spec-val" id="cardPassWarranty" style="color:var(--lime)">{{ $fWarranty }}</div>
+                        </div>
+                    </div>
+
+                    <div style="background:rgba(0,0,0,0.4);border:1px solid var(--border-panel);border-radius:8px;padding:12px;margin-bottom:20px;display:flex;justify-content:space-between;align-items:center">
+                        <div>
+                            <div class="muted" style="font-size:10px;text-transform:uppercase">Chủ sở hữu hiện tại</div>
+                            <div style="font-weight:700;color:var(--text-main)" id="cardPassOwner">{{ $fOwner }}</div>
+                        </div>
+                        <span class="vip-tier-badge pro" id="cardPassTier">THÀNH VIÊN</span>
+                    </div>
+
+                    <div style="display:flex;gap:10px">
+                        <button class="btn lime" type="button" style="flex:1" onclick="alert('Đã đồng bộ thông tin Boot Passport sẵn sàng!')">
+                            ✓ XÁC THỰC THÀNH CÔNG
+                        </button>
+                    </div>
+                </div>
+            </div>
+        @else
+            <div style="text-align:center;padding:48px 16px;color:var(--text-muted)">
+                <div style="font-size:28px;margin-bottom:8px">🎫</div>
+                <div style="font-weight:700;color:var(--text-main);margin-bottom:4px">Chưa có hộ chiếu sản phẩm nào được tạo.</div>
+                <div style="font-size:12px">Hộ chiếu điện tử sẽ tự động cấp phát khi đơn hàng giày chính hãng được xác nhận hoàn tất.</div>
+            </div>
+        @endif
+    </section>
+</div>
+
+{{-- ========================================================================= --}}
+{{-- TAB: ACTIVITY LOG / AUDIT TRAIL                                           --}}
+{{-- ========================================================================= --}}
+<div class="dash-tab-pane" id="tab-activity-log">
+    <section class="panel" id="activity-log">
+        <div class="toolbar">
+            <div>
+                <span class="toolbar-title">📜 NHẬT KÝ HOẠT ĐỘNG HỆ THỐNG (AUDIT TRAIL / ACTIVITY LOG)</span>
+                <div class="muted">Ghi nhận chi tiết mọi thao tác thay đổi tồn kho, đơn hàng, bảo mật và tài khoản theo thời gian thực</div>
+            </div>
+            <div class="actions">
+                <span class="status completed" style="font-size:10px">TỰ ĐỘNG LƯU TRỮ TOÀN VẸN</span>
+            </div>
+        </div>
+
+        {{-- Chronological Audit Timeline --}}
+        <div class="timeline" style="padding-left:32px">
+            @forelse($realActivityLogs as $log)
+                @php
+                    $actionLabels = [
+                        'order.status_updated' => 'Cập nhật trạng thái đơn hàng',
+                        'order.status_changed' => 'Đổi trạng thái đơn hàng',
+                        'abandoned_cart.mark_contacted' => 'Liên hệ giỏ hàng bị bỏ quên',
+                        'second_hand.status_changed' => 'Cập nhật trạng thái ký gửi second-hand',
+                        'campaign.status_updated' => 'Thay đổi trạng thái chiến dịch Matchday',
+                        'campaign.approved' => 'Phê duyệt chiến dịch Matchday',
+                        'cross_sell.rule_created' => 'Tạo quy tắc bán chéo mới',
+                        'trend.provider_changed' => 'Cập nhật nhà cung cấp xu hướng bóng đá',
+                        'team.reorder_drafted' => 'Tạo đơn đặt lại cho đội bóng',
+                    ];
+                    $actionTitle = $actionLabels[$log->action] ?? ucfirst(str_replace(['.', '_'], ' ', $log->action));
+                @endphp
+                <article>
+                    <div class="mono" style="font-size:11px;color:var(--lime);margin-bottom:4px">
+                        {{ $log->created_at->format('d/m/Y · H:i:s') }}
+                        <span class="muted">({{ $log->created_at->diffForHumans() }})</span>
+                    </div>
+                    <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
+                        <span class="status completed" style="font-size:9px">
+                            {{ $log->actor ? 'QUẢN TRỊ VIÊN: ' . strtoupper($log->actor->name) : 'HỆ THỐNG TỰ ĐỘNG' }}
+                        </span>
+                        <span style="font-weight:700;color:var(--text-main)">{{ $actionTitle }}</span>
+                    </div>
+                    <div style="font-size:12px;color:var(--text-sub);line-height:1.4">
+                        @if($log->subject_type)
+                            <span class="mono" style="color:var(--lime)">[{{ class_basename($log->subject_type) }} #{{ $log->subject_id }}]</span>
+                        @endif
+                        @if($log->metadata)
+                            <span style="color:var(--text-sub)">
+                                @foreach($log->metadata as $k => $v)
+                                    <span class="muted">{{ $k }}:</span> <b>{{ is_array($v) ? json_encode($v, JSON_UNESCAPED_UNICODE) : $v }}</b>{{ !$loop->last ? ' · ' : '' }}
+                                @endforeach
+                            </span>
+                        @endif
+                    </div>
+                </article>
+            @empty
+                <div style="text-align:center;padding:48px 16px;color:var(--text-muted)">
+                    <div style="font-size:28px;margin-bottom:8px">📜</div>
+                    <div style="font-weight:700;color:var(--text-main);margin-bottom:4px">Chưa có nhật ký hoạt động nào được ghi nhận.</div>
+                    <div style="font-size:12px">Mọi hoạt động quản trị, cập nhật đơn hàng và phân quyền hệ thống sẽ được tự động lưu vết tại đây.</div>
+                </div>
+            @endforelse
+        </div>
+    </section>
+</div>
+
 {{-- Pass authoritative Revenue Intelligence data to JavaScript for instant reactive charts --}}
 <script>
 window.revenueIntelligenceData = @json($revIntel);
@@ -1275,6 +2534,16 @@ document.addEventListener('DOMContentLoaded', () => {
             'teams': { tab: 'teams', anchor: null },
             'overview': { tab: 'overview', anchor: null },
             'performance': { tab: 'performance', anchor: null },
+            'kanban': { tab: 'kanban', anchor: null },
+            'shipping': { tab: 'shipping', anchor: null },
+            'loyalty': { tab: 'loyalty', anchor: null },
+            'trends': { tab: 'trends', anchor: null },
+            'matchday': { tab: 'matchday', anchor: null },
+            'cross-sell': { tab: 'cross-sell', anchor: null },
+            'abandoned-carts': { tab: 'abandoned-carts', anchor: null },
+            'second-hand': { tab: 'second-hand', anchor: null },
+            'passport': { tab: 'passport', anchor: null },
+            'activity-log': { tab: 'activity-log', anchor: null },
         };
 
         if (aliases[clean]) return aliases[clean];
@@ -1484,6 +2753,177 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         });
     });
+
+    // 5. Second-hand Hub Filters
+    const shFilterBtns = document.querySelectorAll('.sh-filter-btn');
+    const shRows = document.querySelectorAll('#secondHandTable tbody tr');
+    shFilterBtns.forEach(btn => {
+        btn.addEventListener('click', () => {
+            shFilterBtns.forEach(b => b.classList.remove('lime'));
+            btn.classList.add('lime');
+            const filter = btn.dataset.filter;
+            shRows.forEach(row => {
+                row.style.display = (filter === 'all' || row.dataset.status === filter) ? '' : 'none';
+            });
+        });
+    });
 });
+
+// Global helpers for Dashboard Panes
+async function updateOrderStatus(orderId, nextStatus) {
+    const labels = {
+        'confirmed': 'xác nhận đơn hàng',
+        'packing': 'chuyển sang đóng gói',
+        'shipping': 'chuyển sang giao hàng',
+        'completed': 'hoàn tất đơn hàng'
+    };
+    if (!confirm(`Xác nhận ${labels[nextStatus] || nextStatus} cho đơn hàng #${orderId}?`)) return;
+    const csrfToken = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content');
+    try {
+        const res = await fetch(`/admin/orders/${orderId}/status`, {
+            method: 'PATCH',
+            headers: {
+                'Content-Type': 'application/json',
+                'Accept': 'application/json',
+                'X-CSRF-TOKEN': csrfToken || ''
+            },
+            body: JSON.stringify({ status: nextStatus })
+        });
+        if (res.ok) {
+            alert(`✓ Đã cập nhật trạng thái đơn hàng #${orderId} thành công!`);
+            window.location.reload();
+        } else {
+            const err = await res.json().catch(() => ({}));
+            alert(err.message || 'Quy trình trạng thái không hợp lệ theo quy định hệ thống.');
+        }
+    } catch (e) {
+        alert('Không thể kết nối máy chủ để cập nhật đơn hàng.');
+    }
+}
+
+async function contactAbandonedCart(cartId) {
+    if (!confirm('Xác nhận đánh dấu đã liên hệ và kích hoạt mã ưu đãi cho khách hàng của giỏ hàng này?')) return;
+    const csrfToken = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content');
+    try {
+        const res = await fetch(`/admin/abandoned-carts/${cartId}/contacted`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Accept': 'application/json',
+                'X-CSRF-TOKEN': csrfToken || ''
+            },
+            body: JSON.stringify({ coupon_id: null })
+        });
+        if (res.ok) {
+            alert('✓ Đã đánh dấu liên hệ và kích hoạt ưu đãi cứu giỏ thành công!');
+            window.location.reload();
+        } else {
+            const err = await res.json().catch(() => ({}));
+            alert(err.message || 'Có lỗi xảy ra khi cập nhật giỏ hàng.');
+        }
+    } catch (e) {
+        alert('Không thể kết nối máy chủ.');
+    }
+}
+
+async function updateSecondHandStatus(listingId, nextStatus) {
+    const labels = {
+        'under_review': 'bắt đầu kiểm định',
+        'approved': 'duyệt đạt chuẩn',
+        'listed': 'niêm yết bán',
+        'sold': 'đánh dấu đã bán',
+        'rejected': 'từ chối'
+    };
+    if (!confirm(`Xác nhận ${labels[nextStatus] || nextStatus} cho sản phẩm second-hand này?`)) return;
+    const csrfToken = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content');
+    try {
+        const res = await fetch(`/admin/second-hand/${listingId}/status`, {
+            method: 'PATCH',
+            headers: {
+                'Content-Type': 'application/json',
+                'Accept': 'application/json',
+                'X-CSRF-TOKEN': csrfToken || ''
+            },
+            body: JSON.stringify({ status: nextStatus })
+        });
+        if (res.ok) {
+            alert('✓ Đã cập nhật trạng thái sản phẩm second-hand thành công!');
+            window.location.reload();
+        } else {
+            const err = await res.json().catch(() => ({}));
+            alert(err.message || 'Không thể cập nhật trạng thái theo quy trình kiểm định.');
+        }
+    } catch (e) {
+        alert('Không thể kết nối máy chủ.');
+    }
+}
+
+async function updateCampaignStatus(campaignId, nextStatus) {
+    if (!confirm(`Xác nhận chuyển trạng thái chiến dịch sang "${nextStatus}"?`)) return;
+    const csrfToken = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content');
+    try {
+        const res = await fetch(`/admin/campaigns/${campaignId}/status`, {
+            method: 'PATCH',
+            headers: {
+                'Content-Type': 'application/json',
+                'Accept': 'application/json',
+                'X-CSRF-TOKEN': csrfToken || ''
+            },
+            body: JSON.stringify({ status: nextStatus })
+        });
+        if (res.ok) {
+            alert('✓ Đã cập nhật trạng thái chiến dịch Matchday thành công!');
+            window.location.reload();
+        } else {
+            const err = await res.json().catch(() => ({}));
+            alert(err.message || 'Có lỗi khi cập nhật chiến dịch.');
+        }
+    } catch (e) {
+        alert('Không thể kết nối máy chủ.');
+    }
+}
+
+function selectPassportCard(code, name, color, size, stud, orderCode, date, warranty, owner, tier) {
+    const cardPassCode = document.getElementById('cardPassCode');
+    const cardPassName = document.getElementById('cardPassName');
+    const cardPassColor = document.getElementById('cardPassColor');
+    const cardPassSize = document.getElementById('cardPassSize');
+    const cardPassStud = document.getElementById('cardPassStud');
+    const cardPassOrder = document.getElementById('cardPassOrder');
+    const cardPassWarranty = document.getElementById('cardPassWarranty');
+    const cardPassOwner = document.getElementById('cardPassOwner');
+    const cardPassTier = document.getElementById('cardPassTier');
+
+    if (cardPassCode) cardPassCode.innerText = code;
+    if (cardPassName) cardPassName.innerText = name;
+    if (cardPassColor) cardPassColor.innerText = color ? 'Phối màu: ' + color : '';
+    if (cardPassSize) cardPassSize.innerText = 'Size ' + (size || '—');
+    if (cardPassStud) cardPassStud.innerText = stud || 'TF';
+    if (cardPassOrder) cardPassOrder.innerText = (orderCode ? '#' + orderCode : '—') + (date ? ' · ' + date : '');
+    if (cardPassWarranty) cardPassWarranty.innerText = warranty || 'Hết hạn bảo hành';
+    if (cardPassOwner) cardPassOwner.innerText = owner || 'Khách hàng';
+    if (cardPassTier) cardPassTier.innerText = tier || 'THÀNH VIÊN';
+
+    const cardBox = document.querySelector('.passport-card-box');
+    if (cardBox) {
+        cardBox.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    }
+}
+
+function lookupPassport() {
+    const input = document.getElementById('passportSearchInput');
+    const code = input ? input.value.trim().toUpperCase() : '';
+    if (!code) {
+        alert('Vui lòng nhập mã Boot Passport cần tra cứu.');
+        return;
+    }
+    const row = document.querySelector(`tr[data-passport-code="${code}"]`);
+    if (row) {
+        row.querySelector('.btn-view-pass')?.click();
+        row.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    } else {
+        alert(`Không tìm thấy hồ sơ số của Boot Passport "${code}" trong danh sách hệ thống.`);
+    }
+}
 </script>
 @endsection
