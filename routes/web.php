@@ -7,6 +7,7 @@ use App\Http\Controllers\Admin\IntelligenceController;
 use App\Http\Controllers\Admin\OrderController;
 use App\Http\Controllers\Admin\ProductController;
 use App\Http\Controllers\Admin\ReviewController as AdminReviewController;
+use App\Http\Controllers\Admin\RefundController;
 use App\Http\Controllers\Admin\TeamOrderDraftController;
 use App\Http\Controllers\Admin\AbandonedCartController;
 use App\Http\Controllers\Admin\ActivityController;
@@ -123,6 +124,9 @@ Route::middleware(['auth', 'role:super-admin,admin'])->prefix('admin')->name('ad
     Route::get('/orders/kanban', KanbanController::class)->name('orders.kanban');
     Route::get('/orders/{order}', [OrderController::class, 'show'])->name('orders.show');
     Route::patch('/orders/{order}/status', [OrderController::class, 'updateStatus'])->name('orders.status');
+    Route::post('/orders/{order}/refund/processing', [RefundController::class, 'processing'])->name('orders.refund.processing');
+    Route::post('/orders/{order}/refund/confirm', [RefundController::class, 'confirm'])->name('orders.refund.confirm');
+    Route::post('/orders/{order}/refund/failed', [RefundController::class, 'failed'])->name('orders.refund.failed');
     Route::post('/orders/{order}/sync-ghn', [OrderController::class, 'syncGhn'])->middleware('throttle:30,1')->name('orders.sync-ghn');
     Route::get('/reviews', [AdminReviewController::class, 'index'])->name('reviews.index');
     Route::patch('/reviews/{review}/status', [AdminReviewController::class, 'status'])->name('reviews.status');

@@ -8,9 +8,9 @@ class FootballApiAdapter implements FootballTrendProvider
 {
     public function fetch(array $filters = []): array
     {
-        if (! $this->connected()) return ['available' => false, 'provider' => $this->name(), 'message' => 'Chưa kết nối nhà cung cấp dữ liệu bóng đá.', 'data' => []];
-        return ['available' => false, 'provider' => $this->name(), 'message' => 'Adapter đã sẵn sàng nhưng chưa có bộ chuyển đổi dữ liệu của nhà cung cấp.', 'data' => []];
+        return ['available' => false, 'connected' => false, 'configured' => $this->configured(), 'provider' => $this->name(), 'message' => 'Nhà cung cấp bóng đá chưa có adapter vận hành; không có dữ liệu live.', 'data' => []];
     }
-    public function connected(): bool { return filled(config('services.football.endpoint')) && filled(config('services.football.api_key')); }
+    public function configured(): bool { return filled(config('services.football.endpoint')) && filled(config('services.football.api_key')); }
+    public function connected(): bool { return false; }
     public function name(): string { return (string) (config('services.football.provider') ?: 'not_connected'); }
 }

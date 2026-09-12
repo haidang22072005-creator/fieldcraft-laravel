@@ -16,8 +16,10 @@ use App\Models\User;
 use App\Services\AdminNotificationService;
 use App\Services\BootPassportService;
 use App\Services\CrossSellService;
+use App\Services\FootballApiAdapter;
 use App\Services\LoyaltyService;
 use App\Services\MatchdayCampaignService;
+use App\Services\RefundWorkflowService;
 use App\Support\OrderStatus;
 use Illuminate\Auth\Access\AuthorizationException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -122,6 +124,69 @@ class BackendHardeningTest extends TestCase
         app(MatchdayCampaignService::class)->updateStatus($campaign, 'scheduled', $admin->id);
         $this->expectException(ValidationException::class);
         app(MatchdayCampaignService::class)->updateStatus($campaign->fresh(), 'active', $admin->id);
+    }
+
+    public function test_refund_workflow_requires_admin_confirmation_and_is_idempotent(): void
+    {
+        $admin = User::factory()->create(['role' => 'admin']);
+        $customer = User::factory()->create(['role' => 'customer']);
+        $order = $this->order($customer, OrderStatus::COMPLETED, ['payment_method' => 'momo', 'payment_status' => 'paid']);
+        $payment = Payment::create(['order_id' => $order->id, 'provider' => 'momo', 'request_id' => str()->uuid(), 'amount' => $order->total, 'status' => 'paid', 'refund_status' => 'required']);
+        app(LoyaltyService::class)->recordCompletedOrder($order);
+
+        $this->actingAs($admin)->postJson(route('admin.orders.refund.processing', $order))->assertOk()->assertJsonPath('data.refund_status', 'pending');
+        $this->actingAs($admin)->postJson(route('admin.orders.refund.confirm', $order), [])->assertUnprocessable();
+        $this->assertDatabaseHas('payments', ['id' => $payment->id, 'refund_status' => 'pending']);
+
+        $first = $this->actingAs($admin)->postJson(route('admin.orders.refund.confirm', $order), ['refund_reference' => 'REF-001'])->assertOk();
+        $first->assertJsonPath('data.refund_status', 'refunded');
+        $this->assertDatabaseHas('payments', ['id' => $payment->id, 'refund_status' => 'refunded', 'refund_reference' => 'REF-001', 'refund_confirmed_by' => $admin->id]);
+        $this->assertNotNull(Payment::find($payment->id)->refunded_at);
+        $this->assertDatabaseCount('loyalty_point_transactions', 2);
+        $this->assertDatabaseHas('loyalty_point_transactions', ['order_id' => $order->id, 'type' => 'clawback', 'points' => -10]);
+
+        $this->actingAs($admin)->postJson(route('admin.orders.refund.confirm', $order), ['refund_reference' => 'REF-001'])->assertOk();
+        $this->assertDatabaseCount('loyalty_point_transactions', 2);
+        $this->assertSame(1, Payment::where('refund_status', 'refunded')->count());
+    }
+
+    public function test_refund_invalid_state_and_non_admin_are_rejected(): void
+    {
+        $customer = User::factory()->create(['role' => 'customer']);
+        $other = User::factory()->create(['role' => 'customer']);
+        $order = $this->order($customer, OrderStatus::PENDING, ['payment_method' => 'momo', 'payment_status' => 'paid']);
+        Payment::create(['order_id' => $order->id, 'provider' => 'momo', 'request_id' => str()->uuid(), 'amount' => $order->total, 'status' => 'paid', 'refund_status' => 'none']);
+
+        $this->actingAs($customer)->postJson(route('admin.orders.refund.processing', $order))->assertForbidden();
+        $this->actingAs($other)->postJson(route('admin.orders.refund.confirm', $order), ['refund_reference' => 'REF-002'])->assertForbidden();
+        $this->actingAs(User::factory()->create(['role' => 'admin']))->postJson(route('admin.orders.refund.processing', $order))->assertUnprocessable();
+        $this->assertDatabaseHas('payments', ['order_id' => $order->id, 'refund_status' => 'none']);
+    }
+
+    public function test_refund_failure_is_allowed_from_required_or_pending_but_not_after_confirmation(): void
+    {
+        $admin = User::factory()->create(['role' => 'admin']);
+        $customer = User::factory()->create(['role' => 'customer']);
+        $order = $this->order($customer, OrderStatus::PENDING, ['payment_method' => 'payos', 'payment_status' => 'paid']);
+        $payment = Payment::create(['order_id' => $order->id, 'provider' => 'bank_qr', 'request_id' => str()->uuid(), 'amount' => $order->total, 'status' => 'paid', 'refund_status' => 'required']);
+
+        $this->actingAs($admin)->postJson(route('admin.orders.refund.failed', $order), ['refund_reason' => 'Provider rejected refund'])->assertOk()->assertJsonPath('data.refund_status', 'failed');
+        $this->assertDatabaseHas('payments', ['id' => $payment->id, 'refund_status' => 'failed', 'refund_reason' => 'Provider rejected refund']);
+        $this->actingAs($admin)->postJson(route('admin.orders.refund.confirm', $order), ['refund_reference' => 'REF-003'])->assertUnprocessable();
+    }
+
+    public function test_football_provider_never_claims_connected_when_fetch_is_unavailable(): void
+    {
+        config(['services.football.provider' => 'example-football', 'services.football.endpoint' => 'https://provider.invalid', 'services.football.api_key' => 'configured-but-no-adapter']);
+        $provider = app(FootballApiAdapter::class);
+        $result = $provider->fetch();
+
+        $this->assertTrue($provider->configured());
+        $this->assertFalse($provider->connected());
+        $this->assertFalse($result['available']);
+        $this->assertFalse($result['connected']);
+        $this->assertTrue($result['configured']);
+        $this->assertSame([], $result['data']);
     }
 
     private function order(User $user, string $status, array $extra = []): Order
