@@ -17,6 +17,7 @@ use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
+use Illuminate\Support\Facades\Gate;
 use Illuminate\View\View;
 use Throwable;
 
@@ -172,7 +173,8 @@ class CheckoutController extends Controller
         if ($toDistrictId && $toWardCode && $ghn->isConfigured()) {
             try {
                 $ghnOrders->createAndStoreWaybill($order);
-            } catch (GHNException) {
+            } catch (GHNException $exception) {
+                app(\App\Services\AdminNotificationService::class)->notifyOnce('ghn_failure', 'GHN không tạo được vận đơn', $order->number, ['reason' => $exception->getMessage()], $order);
                 // The paid/local order is still valid when GHN waybill creation is unavailable.
             }
         }
@@ -187,7 +189,7 @@ class CheckoutController extends Controller
 
     public function showBankPayment(Request $request, Order $order): View
     {
-        abort_unless($order->user_id === $request->user()->id, 403);
+        Gate::authorize('view', $order);
         $order->load(['payments', 'items']);
         $payment = $order->payments()->latest('id')->first();
         return view('payments.bank-qr', compact('order', 'payment'));

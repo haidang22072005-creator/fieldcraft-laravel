@@ -10,6 +10,7 @@ use App\Models\ProductVariant;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
+use App\Support\OrderStatus;
 
 class RetryMoMoPayment
 {
@@ -61,7 +62,7 @@ class RetryMoMoPayment
                 $coupon->increment('used_count');
             }
 
-            $order->update(['payment_method' => $provider, 'payment_status' => 'pending', 'status' => 'pending_payment', 'shipping_status' => 'pending']);
+            $order->update(['payment_method' => $provider, 'payment_status' => 'pending', 'status' => OrderStatus::PENDING_PAYMENT, 'shipping_status' => 'pending']);
 
             $payment = Payment::create([
                 'order_id' => $order->id,

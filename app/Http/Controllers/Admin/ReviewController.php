@@ -41,7 +41,7 @@ class ReviewController extends Controller
         return back()->with('success', 'Đã lưu phản hồi FIELDCRAFT.');
     }
 
-    public function destroy(Review $review): RedirectResponse
+    public function destroy(Request $request, Review $review): RedirectResponse
     {
         $review->delete();
         app(\App\Services\ActivityLogService::class)->record('review.deleted', $review, [], $request->user()->id);

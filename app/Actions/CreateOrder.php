@@ -10,6 +10,7 @@ use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
+use App\Support\OrderStatus;
 
 class CreateOrder
 {
@@ -91,7 +92,7 @@ class CreateOrder
                 $coupon->increment('used_count');
             }
 
-            if ($order->status === 'completed') app(\App\Services\LoyaltyService::class)->recordCompletedOrder($order);
+            if ($order->status === OrderStatus::COMPLETED) app(\App\Services\LoyaltyService::class)->recordCompletedOrder($order);
 
             return $order;
         });

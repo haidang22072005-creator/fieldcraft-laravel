@@ -16,13 +16,17 @@ class SecondHandController extends Controller
     public function status(Request $request, SecondHandListing $secondHandListing, ActivityLogService $activity): JsonResponse
     {
         $data = $request->validate(['status' => ['required', 'in:submitted,under_review,approved,listed,sold,rejected,cancelled'], 'commission_amount' => ['nullable', 'integer', 'min:0'], 'voucher_bonus' => ['nullable', 'integer', 'min:0'], 'moderation_note' => ['nullable', 'string', 'max:2000']]);
-        $allowed = match ($secondHandListing->status) { 'submitted' => ['under_review', 'rejected', 'cancelled'], 'under_review' => ['approved', 'rejected', 'cancelled'], 'approved' => ['listed', 'rejected', 'cancelled'], 'listed' => ['sold', 'cancelled'], default => [] };
-        if (! in_array($data['status'], $allowed, true)) throw ValidationException::withMessages(['status' => 'Sản phẩm second-hand không thể chuyển trạng thái theo quy trình.']);
-        $updates = collect($data)->except('status')->all() + ['status' => $data['status'], 'reviewed_by' => $request->user()->id];
-        if ($data['status'] === 'listed') $updates['listed_at'] = now();
-        if ($data['status'] === 'sold') $updates['sold_at'] = now();
-        $secondHandListing->update($updates);
-        $activity->record('second_hand.status_changed', $secondHandListing, ['status' => $data['status']], $request->user()->id);
-        return response()->json(['data' => $secondHandListing->fresh(['user', 'reviewer'])]);
+        $updated = \Illuminate\Support\Facades\DB::transaction(function () use ($secondHandListing, $data, $request): SecondHandListing {
+            $locked = SecondHandListing::query()->lockForUpdate()->findOrFail($secondHandListing->id);
+            $allowed = match ($locked->status) { 'submitted' => ['under_review', 'rejected', 'cancelled'], 'under_review' => ['approved', 'rejected', 'cancelled'], 'approved' => ['listed', 'rejected', 'cancelled'], 'listed' => ['sold', 'cancelled'], default => [] };
+            if (! in_array($data['status'], $allowed, true)) throw ValidationException::withMessages(['status' => 'Sản phẩm second-hand không thể chuyển trạng thái theo quy trình.']);
+            $updates = collect($data)->except('status')->all() + ['status' => $data['status'], 'reviewed_by' => $request->user()->id];
+            if ($data['status'] === 'listed') $updates['listed_at'] = now();
+            if ($data['status'] === 'sold') $updates['sold_at'] = now();
+            $locked->update($updates);
+            return $locked->fresh(['user', 'reviewer']);
+        });
+        $activity->record('second_hand.status_changed', $updated, ['status' => $data['status']], $request->user()->id);
+        return response()->json(['data' => $updated]);
     }
 }

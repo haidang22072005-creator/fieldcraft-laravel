@@ -9,13 +9,14 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Gate;
 use Illuminate\Validation\ValidationException;
 
 class ReviewController extends Controller
 {
     public function store(Request $request, Order $order, OrderItem $orderItem): RedirectResponse|JsonResponse
     {
-        abort_unless((int) $order->user_id === (int) $request->user()->id, 403);
+        Gate::authorize('view', $order);
         if ($order->status !== 'completed') {
             throw ValidationException::withMessages(['review' => 'Chỉ có thể đánh giá đơn hàng đã hoàn thành.']);
         }

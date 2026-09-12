@@ -13,7 +13,9 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Gate;
 use Throwable;
+use App\Support\OrderStatus;
 
 class PayOSPaymentController extends Controller
 {
@@ -36,7 +38,7 @@ class PayOSPaymentController extends Controller
                 if ($payment->status !== 'paid') {
                     $payment->update(['status' => 'paid', 'transaction_id' => (string) ($data['reference'] ?? $data['paymentLinkId'] ?? ''), 'result_code' => 0, 'message' => $data['desc'] ?? 'Thành công', 'paid_at' => now()]);
                 }
-                if ($order->status === 'cancelled') {
+                if ($order->status === OrderStatus::CANCELLED) {
                     $payment->update([
                         'refund_status' => $payment->refund_status === 'refunded' ? 'refunded' : 'required',
                         'refund_reason' => $payment->refund_reason ?: 'Thanh toán được ghi nhận sau khi đơn đã hủy.',
@@ -47,7 +49,7 @@ class PayOSPaymentController extends Controller
 
                     return [$order, false];
                 }
-                $order->update(['payment_status' => 'paid', 'status' => $order->status === 'pending_payment' ? 'pending' : $order->status]);
+                $order->update(['payment_status' => 'paid', 'status' => $order->status === OrderStatus::PENDING_PAYMENT ? OrderStatus::PENDING : $order->status]);
                 app(\App\Services\AdminNotificationService::class)->notifyOnce('payment_success', 'Thanh toán thành công', $order->number, [], $order);
                 app(\App\Services\ActivityLogService::class)->recordOnce('payment.success', $order);
                 $createWaybill = ! $order->ghn_order_code && $order->shipping_status === 'pending' && $order->to_district_id && $order->to_ward_code;
@@ -58,8 +60,9 @@ class PayOSPaymentController extends Controller
             if ($createWaybill) {
                 try {
                     if (! $ghnOrders->createAndStoreWaybill($order->fresh())) Order::whereKey($order->id)->whereNull('ghn_order_code')->update(['shipping_status' => 'pending']);
-                } catch (GHNException) {
-                    Order::whereKey($order->id)->whereNull('ghn_order_code')->update(['shipping_status' => 'pending']);
+                    } catch (GHNException $exception) {
+                        app(\App\Services\AdminNotificationService::class)->notifyOnce('ghn_failure', 'GHN không tạo được vận đơn', $order->number, ['reason' => $exception->getMessage()], $order);
+                        Order::whereKey($order->id)->whereNull('ghn_order_code')->update(['shipping_status' => 'pending']);
                 }
             }
         } else {
@@ -76,7 +79,8 @@ class PayOSPaymentController extends Controller
 
     public function retry(Request $request, Order $order, RetryMoMoPayment $retry, PayOSService $payOS, CancelOrder $cancelOrder): RedirectResponse
     {
-        abort_unless($order->user_id === $request->user()->id && $order->payment_method === 'bank_qr', 403);
+        Gate::authorize('view', $order);
+        abort_unless($order->payment_method === 'bank_qr', 403);
         $payment = $retry->handleForProvider($order, 'bank_qr');
         try {
             return $this->initialize($order->fresh(), $payment, $payOS);

@@ -10,8 +10,10 @@ use App\Services\GHNService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Gate;
 use Illuminate\Validation\ValidationException;
 use Illuminate\View\View;
+use App\Support\OrderStatus;
 
 class PurchaseController extends Controller
 {
@@ -22,7 +24,7 @@ class PurchaseController extends Controller
 
     public function show(Request $request, Order $order): View|JsonResponse
     {
-        $this->assertOwner($request, $order);
+        Gate::authorize('view', $order);
         $this->loadOrder($order);
         $tracking = $this->ghnOrders->trackingForOrder($order);
         $data = $this->orderData($order, $tracking);
@@ -36,14 +38,14 @@ class PurchaseController extends Controller
 
     public function tracking(Request $request, Order $order): JsonResponse
     {
-        $this->assertOwner($request, $order);
+        Gate::authorize('view', $order);
 
         return response()->json(['tracking' => $this->ghnOrders->trackingForOrder($order)]);
     }
 
     public function reorder(Request $request, Order $order): RedirectResponse|JsonResponse
     {
-        $this->assertOwner($request, $order);
+        Gate::authorize('view', $order);
         $order->load('items.variant');
         $cartItems = $this->cart->items($request)->keyBy(fn (array $line) => (int) $line['variant']->id);
         $added = [];
@@ -84,7 +86,7 @@ class PurchaseController extends Controller
 
     public function cancel(Request $request, Order $order, CancelOrder $cancelOrder): RedirectResponse|JsonResponse
     {
-        $this->assertOwner($request, $order);
+        Gate::authorize('cancel', $order);
         $cancelOrder->handle($order);
         $message = 'Đã hủy đơn hàng.';
 
@@ -97,8 +99,8 @@ class PurchaseController extends Controller
 
     public function expedite(Request $request, Order $order): RedirectResponse|JsonResponse
     {
-        $this->assertOwner($request, $order);
-        if ($order->status === 'cancelled') {
+        Gate::authorize('view', $order);
+        if ($order->status === OrderStatus::CANCELLED) {
             throw ValidationException::withMessages(['order' => 'Đơn hàng đã hủy không thể gửi yêu cầu hỗ trợ.']);
         }
 
@@ -119,15 +121,10 @@ class PurchaseController extends Controller
 
     public function print(Request $request, Order $order): View
     {
-        $this->assertOwner($request, $order);
+        Gate::authorize('view', $order);
         $this->loadOrder($order);
 
         return view('purchase-print', compact('order'));
-    }
-
-    private function assertOwner(Request $request, Order $order): void
-    {
-        abort_unless((int) $order->user_id === (int) $request->user()->id, 403);
     }
 
     private function loadOrder(Order $order): void

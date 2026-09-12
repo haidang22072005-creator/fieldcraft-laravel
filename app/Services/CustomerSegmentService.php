@@ -9,7 +9,7 @@ class CustomerSegmentService
 {
     public function for(User $user): array
     {
-        $metrics = $user->orders()->where('status', 'completed')->selectRaw('COUNT(*) AS completed_order_count, MAX(created_at) AS last_completed_purchase')->first();
+        $metrics = $user->orders()->where('status', 'completed')->whereDoesntHave('payments', fn ($payment) => $payment->where('refund_status', 'refunded'))->selectRaw('COUNT(*) AS completed_order_count, MAX(created_at) AS last_completed_purchase')->first();
         $tier = app(LoyaltyService::class)->profileFromMetrics((array) $metrics->getAttributes())['tier'];
         return $this->fromMetrics((array) $metrics->getAttributes(), $tier);
     }

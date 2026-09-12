@@ -7,6 +7,7 @@ use App\Models\Order;
 use App\Models\OrderItem;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
+use App\Support\OrderStatus;
 
 class BootPassportService
 {
@@ -40,16 +41,18 @@ class BootPassportService
 
     private function eligible(OrderItem $item): bool
     {
-        return $item->order?->status === 'completed' && $item->variant?->product && in_array(strtolower((string) $item->variant->product->category), ['giày', 'football', 'boots', 'shoes'], true);
+        return $item->order?->status === OrderStatus::COMPLETED && $item->variant?->product && in_array(strtolower((string) $item->variant->product->category), ['giày', 'football', 'boots', 'shoes'], true);
     }
 
     private function create(OrderItem $item): BootPassport
     {
         return DB::transaction(function () use ($item): BootPassport {
-            $existing = BootPassport::query()->where('order_item_id', $item->id)->first();
-            if ($existing) return $existing->load(['order', 'orderItem', 'variant']);
             $variant = $item->variant;
-            return BootPassport::create(['passport_code' => 'PASS-'.strtoupper(Str::random(12)), 'user_id' => $item->order->user_id, 'order_id' => $item->order_id, 'order_item_id' => $item->id, 'product_variant_id' => $item->product_variant_id, 'variant_snapshot' => ['product_name' => $item->product_name, 'sku' => $item->sku, 'unit_price' => $item->unit_price, 'quantity' => $item->quantity, 'variant_id' => $item->product_variant_id], 'color' => $item->color, 'size' => $item->size, 'stud_type' => $variant?->stud_type, 'purchase_date' => $item->order->completed_at?->toDateString() ?? $item->order->created_at->toDateString(), 'review_status' => $item->review ? $item->review->status : 'not_reviewed', 'second_hand_eligible' => true])->load(['order', 'orderItem', 'variant']);
+            $passport = BootPassport::query()->firstOrCreate(['order_item_id' => $item->id], ['passport_code' => 'PASS-'.strtoupper(Str::random(12)), 'user_id' => $item->order->user_id, 'order_id' => $item->order_id, 'product_variant_id' => $item->product_variant_id, 'variant_snapshot' => ['product_name' => $item->product_name, 'sku' => $item->sku, 'unit_price' => $item->unit_price, 'quantity' => $item->quantity, 'variant_id' => $item->product_variant_id], 'color' => $item->color, 'size' => $item->size, 'stud_type' => $variant?->stud_type, 'purchase_date' => $item->order->completed_at?->toDateString() ?? $item->order->created_at->toDateString(), 'review_status' => $item->review ? $item->review->status : 'not_reviewed', 'second_hand_eligible' => true]);
+            if ($passport->wasRecentlyCreated) {
+                app(ActivityLogService::class)->recordOnce('boot_passport.generated', $passport, ['order_id' => $item->order_id, 'order_item_id' => $item->id]);
+            }
+            return $passport->load(['order', 'orderItem', 'variant']);
         });
     }
 }

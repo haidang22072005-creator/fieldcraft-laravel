@@ -13,6 +13,7 @@ use App\Models\User;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
+use App\Support\OrderStatus;
 
 class AdminIntelligenceService
 {
@@ -115,7 +116,7 @@ class AdminIntelligenceService
         $this->lowStockVariants()->each(fn (ProductVariant $variant) => $add('low_stock_variant', 'medium', 'Biến thể sắp hết hàng', $variant->product?->name.' · '.$variant->color.' / '.$variant->size, 'admin.products.edit', $variant->product_id));
         ProductVariant::whereIn('size', (array) config('services.admin.important_sizes', ['40', '41']))->whereRaw('stock <= COALESCE(low_stock_threshold, ?)', [(int) config('services.admin.low_stock_threshold', 5)])->get()->each(fn (ProductVariant $variant) => $add('important_size_low_stock', 'high', 'Size quan trọng sắp hết hàng', $variant->color.' / size '.$variant->size, 'admin.products.edit', $variant->product_id));
         Review::with('product')->whereIn('status', ['pending', 'approved'])->where('rating', '<=', 2)->whereNull('admin_reply')->get()->each(fn (Review $review) => $add('low_rating_without_reply', 'medium', 'Đánh giá thấp chưa được phản hồi', $review->product?->name ?? 'Review #'.$review->id, 'admin.reviews.index', $review->id));
-        Order::whereIn('status', ['pending', 'pending_payment'])->where('created_at', '<', $stuckAt)->get()->each(fn (Order $order) => $add('pending_confirmation', 'medium', 'Đơn chờ xác nhận quá lâu', $order->number, 'admin.orders.show', $order->id));
+        Order::whereIn('status', [OrderStatus::PENDING, OrderStatus::PENDING_PAYMENT])->where('created_at', '<', $stuckAt)->get()->each(fn (Order $order) => $add('pending_confirmation', 'medium', 'Đơn chờ xác nhận quá lâu', $order->number, 'admin.orders.show', $order->id));
 
         return $alerts->values();
     }
@@ -189,10 +190,10 @@ class AdminIntelligenceService
     {
         $summary = Order::query()->where('user_id', $user->id)->selectRaw(
             "COUNT(*) AS total_orders,
-            SUM(CASE WHEN status = 'completed' THEN 1 ELSE 0 END) AS completed_orders,
-            SUM(CASE WHEN status = 'completed' THEN total ELSE 0 END) AS completed_spend,
-            AVG(CASE WHEN status = 'completed' THEN total END) AS average_order_value,
-            MAX(created_at) AS last_purchase"
+            SUM(CASE WHEN status = 'completed' AND NOT EXISTS (SELECT 1 FROM payments WHERE payments.order_id = orders.id AND payments.refund_status = 'refunded') THEN 1 ELSE 0 END) AS completed_orders,
+            SUM(CASE WHEN status = 'completed' AND NOT EXISTS (SELECT 1 FROM payments WHERE payments.order_id = orders.id AND payments.refund_status = 'refunded') THEN total ELSE 0 END) AS completed_spend,
+            AVG(CASE WHEN status = 'completed' AND NOT EXISTS (SELECT 1 FROM payments WHERE payments.order_id = orders.id AND payments.refund_status = 'refunded') THEN total END) AS average_order_value,
+            MAX(CASE WHEN status = 'completed' AND NOT EXISTS (SELECT 1 FROM payments WHERE payments.order_id = orders.id AND payments.refund_status = 'refunded') THEN created_at END) AS last_purchase"
         )->first();
         $preferences = OrderItem::query()
             ->join('orders', 'orders.id', '=', 'order_items.order_id')
@@ -200,6 +201,7 @@ class AdminIntelligenceService
             ->leftJoin('products', 'products.id', '=', 'product_variants.product_id')
             ->where('orders.user_id', $user->id)
             ->where('orders.status', 'completed')
+            ->whereNotExists(fn ($query) => $query->select(DB::raw(1))->from('payments')->whereColumn('payments.order_id', 'orders.id')->where('refund_status', 'refunded'))
             ->get(['products.brand', 'order_items.size', 'order_items.quantity']);
         $brand = $preferences->groupBy('brand')->sortByDesc(fn (Collection $values) => $values->sum('quantity'))->keys()->first();
         $size = $preferences->groupBy('size')->sortByDesc(fn (Collection $values) => $values->sum('quantity'))->keys()->first();

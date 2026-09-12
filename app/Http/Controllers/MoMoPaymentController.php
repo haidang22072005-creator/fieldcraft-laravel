@@ -16,16 +16,18 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
+use Illuminate\Support\Facades\Gate;
 use Illuminate\Validation\ValidationException;
 use Illuminate\View\View;
 use Throwable;
+use App\Support\OrderStatus;
 
 class MoMoPaymentController extends Controller
 {
     public function simulateSuccess(Request $request, Order $order, MoMoService $momo, CancelOrder $cancelOrder, GHNOrderService $ghnOrders): RedirectResponse
     {
         abort_unless(app()->environment('local') && config('services.momo.simulator_enabled') === true, 404);
-        abort_unless($order->user_id === $request->user()->id, 403);
+        Gate::authorize('view', $order);
         if ($order->payment_method !== 'momo' || $order->payment_status === 'paid') {
             throw ValidationException::withMessages(['payment' => 'Đơn hàng không thể giả lập thanh toán.']);
         }
@@ -60,7 +62,7 @@ class MoMoPaymentController extends Controller
 
     public function retry(Request $request, Order $order, RetryMoMoPayment $retry, MoMoService $momo, CancelOrder $cancelOrder): RedirectResponse
     {
-        abort_unless($order->user_id === $request->user()->id, 403);
+        Gate::authorize('view', $order);
         $payment = $retry->handle($order);
 
         try {
@@ -143,7 +145,7 @@ class MoMoPaymentController extends Controller
                     ]);
                 }
 
-                if ($order->status === 'cancelled') {
+                if ($order->status === OrderStatus::CANCELLED) {
                     $lockedPayment->update([
                         'refund_status' => $lockedPayment->refund_status === 'refunded' ? 'refunded' : 'required',
                         'refund_reason' => $lockedPayment->refund_reason ?: 'Thanh toán được ghi nhận sau khi đơn đã hủy.',
@@ -157,7 +159,7 @@ class MoMoPaymentController extends Controller
 
                 $order->update([
                     'payment_status' => 'paid',
-                    'status' => $order->status === 'pending_payment' ? 'pending' : $order->status,
+                    'status' => $order->status === OrderStatus::PENDING_PAYMENT ? OrderStatus::PENDING : $order->status,
                 ]);
 
                 $createWaybill = ! $order->ghn_order_code
@@ -174,7 +176,8 @@ class MoMoPaymentController extends Controller
                     if (! $ghnOrders->createAndStoreWaybill($order->fresh())) {
                         Order::query()->whereKey($order->id)->whereNull('ghn_order_code')->update(['shipping_status' => 'pending']);
                     }
-                } catch (GHNException) {
+                } catch (GHNException $exception) {
+                    app(\App\Services\AdminNotificationService::class)->notifyOnce('ghn_failure', 'GHN không tạo được vận đơn', $order->number, ['reason' => $exception->getMessage()], $order);
                     Order::query()->whereKey($order->id)->whereNull('ghn_order_code')->update(['shipping_status' => 'pending']);
                 }
             }

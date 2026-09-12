@@ -11,7 +11,7 @@ use Illuminate\Http\Request;
 class SecondHandController extends Controller
 {
     public function index(Request $request): JsonResponse { return response()->json(['data' => $request->user()->secondHandListings()->latest()->get()]); }
-    public function show(Request $request, SecondHandListing $secondHandListing): JsonResponse { abort_unless($secondHandListing->user_id === $request->user()->id, 403); return response()->json(['data' => $secondHandListing]); }
+    public function show(Request $request, SecondHandListing $secondHandListing): JsonResponse { $this->authorize('view', $secondHandListing); return response()->json(['data' => $secondHandListing]); }
     public function store(Request $request, ActivityLogService $activity, AdminNotificationService $notifications): JsonResponse
     {
         abort_unless($request->user()->role === 'customer', 403);

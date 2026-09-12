@@ -15,8 +15,10 @@ use App\Services\GHNService;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Gate;
 use Illuminate\Validation\ValidationException;
 use Illuminate\View\View;
+use App\Support\OrderStatus;
 
 class OrderController extends Controller
 {
@@ -58,31 +60,29 @@ class OrderController extends Controller
 
     public function show(Order $order): View
     {
+        Gate::authorize('view', $order);
         return view('admin.orders.show', ['order' => $order->load(['user', 'address', 'items.variant.product.images', 'items.customizationJobs', 'customizationJobs', 'payments', 'statusHistories.actor', 'completedBy'])]);
     }
 
     public function updateStatus(Request $request, Order $order, GHNService $ghn, GHNOrderService $ghnOrders, CancelOrder $cancelOrder): RedirectResponse
     {
-        $status = $request->validate(['status' => ['required', 'in:pending,confirmed,packing,shipping,cancelled']])['status'];
+        $status = $request->validate(['status' => ['required', \Illuminate\Validation\Rule::in(OrderStatus::adminTargets())]])['status'];
         if ($status === 'cancelled') {
-            $cancelOrder->handle($order);
+            $cancelOrder->handle($order, 'cancelled', $request->user()->id);
 
 return back()->with('success', 'Đã cập nhật trạng thái đơn.');
         }
         if ($status === $order->status) {
             return back()->with('success', 'Trạng thái đơn không thay đổi.');
         }
-        $allowed = match ($order->status) {
-            'pending' => ['confirmed'], 'confirmed' => ['packing'], 'packing', 'preparing' => ['shipping'], default => []
-        };
-        if (! in_array($status, $allowed, true)) {
+        if (! OrderStatus::canTransition($order->status, $status)) {
             throw ValidationException::withMessages(['status' => 'Trạng thái đơn không thể chuyển theo quy trình.']);
         }
         if ($status === 'shipping' && ! $order->ghn_order_code && $ghn->isConfigured() && $order->to_district_id && $order->to_ward_code) {
             try {
                 $ghnOrders->createAndStoreWaybill($order->fresh());
             } catch (GHNException $exception) {
-                app(\App\Services\AdminNotificationService::class)->notify('ghn_failure', 'GHN không tạo được vận đơn', $order->number, ['reason' => $exception->getMessage()], $order);
+                app(\App\Services\AdminNotificationService::class)->notifyOnce('ghn_failure', 'GHN không tạo được vận đơn', $order->number, ['reason' => $exception->getMessage()], $order);
                 throw ValidationException::withMessages(['status' => 'Không thể bàn giao đơn hàng cho GHN: '.$exception->getMessage()]);
             }
         }
@@ -90,7 +90,11 @@ return back()->with('success', 'Đã cập nhật trạng thái đơn.');
             $locked = Order::lockForUpdate()->findOrFail($order->id);
             if ($locked->status !== $order->status) {
                 throw ValidationException::withMessages(['status' => 'Đơn hàng vừa được cập nhật, vui lòng tải lại.']);
-            } $from = $locked->status;
+            }
+            if (! OrderStatus::canTransition($locked->status, $status)) {
+                throw ValidationException::withMessages(['status' => 'Trạng thái đơn không thể chuyển theo quy trình.']);
+            }
+            $from = $locked->status;
             $locked->update(['status' => $status]);
             $this->recordStatus($locked, $from, $status, 'admin', $request->user()->id);
         });
@@ -120,7 +124,7 @@ return back()->with('success', 'Đã cập nhật trạng thái đơn.');
             } $locked->update($updates);
             if ($from) {
                 $this->recordStatus($locked, $from, 'completed', 'ghn', null);
-                app(\App\Services\AdminNotificationService::class)->notify('ghn_delivered', 'GHN đã giao đơn hàng', $locked->number, [], $locked);
+                app(\App\Services\AdminNotificationService::class)->notifyOnce('ghn_delivered', 'GHN đã giao đơn hàng', $locked->number, [], $locked);
             }
         });
         if ($from) {

@@ -7,6 +7,7 @@ use App\Models\Order;
 use App\Models\ProductVariant;
 use App\Exceptions\GHNException;
 use App\Services\GHNOrderService;
+use App\Support\OrderStatus;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Validation\ValidationException;
@@ -15,9 +16,9 @@ class CancelOrder
 {
     public function __construct(private GHNOrderService $ghnOrders) {}
 
-    public function handle(Order $order, string $paymentStatus = 'cancelled'): ?string
+    public function handle(Order $order, string $paymentStatus = 'cancelled', ?int $actorId = null): ?string
     {
-        return DB::transaction(function () use ($order, $paymentStatus) {
+        return DB::transaction(function () use ($order, $paymentStatus, $actorId) {
             $lockedOrder = Order::query()->lockForUpdate()->findOrFail($order->id);
             if ($lockedOrder->status === 'cancelled') {
                 return null;
@@ -25,7 +26,7 @@ class CancelOrder
             if ($this->isProviderPaidOnline($lockedOrder)) {
                 throw ValidationException::withMessages(['order' => 'Đơn đã thanh toán trực tuyến. Vui lòng yêu cầu hoàn tiền.']);
             }
-            if (! in_array($lockedOrder->status, ['pending', 'pending_payment', 'preparing', 'confirmed', 'packing', 'shipping'], true)) {
+            if (! in_array($lockedOrder->status, OrderStatus::customerCancellable(), true)) {
                 throw ValidationException::withMessages(['order' => 'Đơn hàng không còn trong trạng thái có thể hủy.']);
             }
 
@@ -67,7 +68,7 @@ class CancelOrder
                 'payment_status' => $paymentStatus,
                 'shipping_status' => 'cancelled',
             ]);
-            app(\App\Services\ActivityLogService::class)->record('order.cancelled', $lockedOrder);
+            app(\App\Services\ActivityLogService::class)->record('order.cancelled', $lockedOrder, [], $actorId);
 
             return $ghnOrderCode;
         });
