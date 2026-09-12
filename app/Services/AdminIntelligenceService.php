@@ -4,12 +4,14 @@ namespace App\Services;
 
 use App\Models\Order;
 use App\Models\OrderItem;
+use App\Models\Coupon;
 use App\Models\Payment;
 use App\Models\Product;
 use App\Models\ProductVariant;
 use App\Models\Review;
 use App\Models\TeamProfile;
 use App\Models\User;
+use App\Models\SupportTicket;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
@@ -202,16 +204,33 @@ class AdminIntelligenceService
             ->where('orders.user_id', $user->id)
             ->where('orders.status', 'completed')
             ->whereNotExists(fn ($query) => $query->select(DB::raw(1))->from('payments')->whereColumn('payments.order_id', 'orders.id')->where('refund_status', 'refunded'))
-            ->get(['products.brand', 'order_items.size', 'order_items.quantity']);
-        $brand = $preferences->groupBy('brand')->sortByDesc(fn (Collection $values) => $values->sum('quantity'))->keys()->first();
-        $size = $preferences->groupBy('size')->sortByDesc(fn (Collection $values) => $values->sum('quantity'))->keys()->first();
+            ->select(['products.brand', 'order_items.size', 'product_variants.stud_type', 'product_variants.surface_type', DB::raw('SUM(order_items.quantity) AS purchase_quantity')])
+            ->groupBy('products.brand', 'order_items.size', 'product_variants.stud_type', 'product_variants.surface_type')
+            ->orderByDesc('purchase_quantity')
+            ->limit(100)
+            ->get();
+        $brand = $preferences->groupBy('brand')->sortByDesc(fn (Collection $values) => $values->sum('purchase_quantity'))->keys()->first();
+        $size = $preferences->groupBy('size')->sortByDesc(fn (Collection $values) => $values->sum('purchase_quantity'))->keys()->first();
+        $studType = $preferences->groupBy('stud_type')->sortByDesc(fn (Collection $values) => $values->sum('purchase_quantity'))->keys()->first();
+        $groundType = $preferences->groupBy('surface_type')->sortByDesc(fn (Collection $values) => $values->sum('purchase_quantity'))->keys()->first();
         $payment = Order::query()->where('user_id', $user->id)->select('payment_method', DB::raw('COUNT(*) AS aggregate'))->groupBy('payment_method')->orderByDesc('aggregate')->value('payment_method');
         $approvedReviewAverage = Review::query()->where('user_id', $user->id)->where('status', 'approved')->avg('rating');
         $loyalty = $this->loyalty->profileFromMetrics(['completed_spend' => $summary->completed_spend, 'completed_order_count' => $summary->completed_orders, 'last_completed_purchase' => $summary->last_purchase, 'loyalty_points' => $user->loyaltyPointTransactions()->sum('points')]);
         $lastPurchase = $summary?->last_purchase ? Carbon::parse($summary->last_purchase)->toISOString() : null;
+        $activeVouchers = Coupon::query()->where('user_id', $user->id)->where('is_active', true)->where(function ($query): void {
+            $query->whereNull('starts_at')->orWhere('starts_at', '<=', now());
+        })->where(function ($query): void {
+            $query->whereNull('expires_at')->orWhere('expires_at', '>', now());
+        })->latest()->limit(20)->get();
+        $recentOrders = $user->orders()->with(['items', 'payments'])->latest()->limit(5)->get();
+        $recentReviews = $user->reviews()->with('product')->latest()->limit(5)->get();
+        $recentSupportTickets = SupportTicket::query()->where('user_id', $user->id)->withCount('messages')->latest('last_message_at')->limit(5)->get();
+        $recentTeams = TeamProfile::with('members')->where('user_id', $user->id)->latest()->limit(10)->get();
 
         return [
             'user_id' => $user->id,
+            'customer' => $user->only(['id', 'name', 'email', 'phone', 'avatar']),
+            'avatar' => $user->avatar,
             'total_orders' => (int) ($summary->total_orders ?? 0),
             'completed_orders' => (int) ($summary->completed_orders ?? 0),
             'completed_spend' => (int) ($summary->completed_spend ?? 0),
@@ -219,11 +238,17 @@ class AdminIntelligenceService
             'last_purchase' => $lastPurchase,
             'preferred_brand' => $brand,
             'common_size' => $size,
+            'common_stud_type' => $studType,
+            'common_ground_type' => $groundType,
             'common_payment_method' => $payment,
             'approved_review_average' => (int) ($approvedReviewAverage ?? 0),
             'loyalty' => $loyalty,
             'segments' => $this->segments->fromMetrics(['completed_order_count' => $summary->completed_orders, 'last_completed_purchase' => $summary->last_purchase], $loyalty['tier']),
-            'teams' => TeamProfile::with('members')->where('user_id', $user->id)->latest()->get(),
+            'teams' => $recentTeams,
+            'active_personal_vouchers' => $activeVouchers,
+            'recent_orders' => $recentOrders,
+            'recent_reviews' => $recentReviews,
+            'recent_support_tickets' => $recentSupportTickets,
         ];
     }
 

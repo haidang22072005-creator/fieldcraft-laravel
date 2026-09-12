@@ -24,7 +24,10 @@ use App\Http\Controllers\Admin\TrendController;
 use App\Http\Controllers\AuthController;
 use App\Http\Controllers\CartController;
 use App\Http\Controllers\CheckoutController;
+use App\Http\Controllers\CustomerVoucherController;
 use App\Http\Controllers\CustomizationJobController;
+use App\Http\Controllers\SupportTicketController;
+use App\Http\Controllers\NotificationController as CustomerNotificationController;
 use App\Http\Controllers\LocationController;
 use App\Http\Controllers\MoMoPaymentController;
 use App\Http\Controllers\MoMoSandboxController;
@@ -96,6 +99,7 @@ Route::get('/settings', [SettingsController::class, 'index'])->name('settings');
 Route::put('/settings/profile', [SettingsController::class, 'updateProfile'])->middleware('auth')->name('settings.profile');
 Route::put('/settings/password', [SettingsController::class, 'updatePassword'])->middleware('auth')->name('settings.password');
 Route::post('/settings/avatar', [SettingsController::class, 'updateAvatar'])->middleware('auth')->name('settings.avatar');
+Route::delete('/settings/avatar', [SettingsController::class, 'removeAvatar'])->middleware('auth')->name('settings.avatar.remove');
 Route::post('/settings/notifications', [SettingsController::class, 'updateNotifications'])->middleware('auth')->name('settings.notifications');
 Route::post('/settings/logout-devices', [SettingsController::class, 'logoutDevices'])->middleware('auth')->name('settings.logout-devices');
 Route::delete('/settings/account', [SettingsController::class, 'destroyAccount'])->middleware('auth')->name('settings.account');
@@ -103,6 +107,17 @@ Route::post('/settings/addresses', [SettingsController::class, 'storeAddress'])-
 Route::put('/settings/addresses/{address}', [SettingsController::class, 'updateAddress'])->middleware('auth')->name('settings.addresses.update');
 Route::delete('/settings/addresses/{address}', [SettingsController::class, 'destroyAddress'])->middleware('auth')->name('settings.addresses.destroy');
 Route::get('/purchases', [CheckoutController::class, 'purchases'])->middleware(['auth', 'verified'])->name('purchases');
+Route::get('/vouchers', [CustomerVoucherController::class, 'index'])->middleware(['auth', 'verified'])->name('vouchers.index');
+Route::middleware(['auth', 'verified'])->prefix('support')->name('support.')->group(function () {
+    Route::get('/tickets', [SupportTicketController::class, 'index'])->name('tickets.index');
+    Route::post('/tickets', [SupportTicketController::class, 'store'])->name('tickets.store');
+    Route::get('/tickets/{supportTicket}', [SupportTicketController::class, 'show'])->name('tickets.show');
+    Route::post('/tickets/{supportTicket}/messages', [SupportTicketController::class, 'reply'])->name('tickets.reply');
+});
+Route::middleware(['auth', 'verified'])->prefix('notifications')->name('notifications.')->group(function () {
+    Route::get('/', [CustomerNotificationController::class, 'index'])->name('index');
+    Route::patch('/{notification}/read', [CustomerNotificationController::class, 'read'])->name('read');
+});
 Route::middleware(['auth', 'verified'])->prefix('purchases')->name('purchases.')->group(function () {
     Route::get('/{order}/print', [PurchaseController::class, 'print'])->name('print');
     Route::get('/{order}/tracking', [PurchaseController::class, 'tracking'])->middleware('throttle:30,1')->name('tracking');
@@ -159,6 +174,13 @@ Route::middleware(['auth', 'role:super-admin,admin'])->prefix('admin')->name('ad
         Route::get('/', [LoyaltyController::class, 'index'])->name('index');
         Route::get('/segments', [LoyaltyController::class, 'segments'])->name('segments');
         Route::get('/customers/{user}', [LoyaltyController::class, 'show'])->name('show');
+        Route::post('/customers/{user}/vouchers', [LoyaltyController::class, 'issueVoucher'])->name('vouchers.store');
+    });
+    Route::prefix('support/tickets')->name('support.tickets.')->group(function () {
+        Route::get('/', [\App\Http\Controllers\Admin\SupportTicketController::class, 'index'])->name('index');
+        Route::get('/{supportTicket}', [\App\Http\Controllers\Admin\SupportTicketController::class, 'show'])->name('show');
+        Route::post('/{supportTicket}/messages', [\App\Http\Controllers\Admin\SupportTicketController::class, 'reply'])->name('reply');
+        Route::patch('/{supportTicket}/status', [\App\Http\Controllers\Admin\SupportTicketController::class, 'status'])->name('status');
     });
     Route::prefix('cross-sell')->name('cross-sell.')->group(function () {
         Route::get('/', [CrossSellController::class, 'index'])->name('index');
@@ -218,6 +240,7 @@ Route::middleware(['auth', 'verified'])->prefix('teams')->name('teams.')->group(
     Route::patch('/{teamProfile}/members/{teamMember}', [TeamProfileController::class, 'updateMember'])->name('members.update');
 });
 Route::middleware(['auth', 'verified'])->prefix('customization-jobs')->name('customization-jobs.')->group(function () {
+    Route::post('/', [CustomizationJobController::class, 'store'])->name('store');
     Route::get('/{customizationJob}', [CustomizationJobController::class, 'show'])->name('show');
     Route::patch('/{customizationJob}/status', [CustomizationJobController::class, 'updateStatus'])->name('status');
 });

@@ -30,6 +30,17 @@ class AdminNotificationService
         });
     }
 
+    public function notifyUserOnce(User $user, string $type, string $title, ?string $body = null, array $data = [], ?Model $subject = null): void
+    {
+        $payload = array_merge($data, $subject ? ['subject_type' => $subject->getMorphClass(), 'subject_id' => $subject->getKey()] : []);
+        $eventKey = hash('sha256', implode('|', [$user->id, $type, $body ?? '', $subject?->getMorphClass() ?? '', (string) ($subject?->getKey() ?? '')]));
+
+        AdminNotification::query()->firstOrCreate(
+            ['event_key' => $eventKey],
+            ['user_id' => $user->id, 'type' => $type, 'title' => $title, 'body' => $body, 'data' => $payload]
+        );
+    }
+
     public function syncImportantSizeLowStock(): void
     {
         ProductVariant::query()->whereIn('size', (array) config('services.admin.important_sizes', ['40', '41']))->whereRaw('stock <= COALESCE(low_stock_threshold, ?)', [(int) config('services.admin.low_stock_threshold', 5)])->chunkById(200, fn ($variants) => $variants->each(fn (ProductVariant $variant) => $this->syncImportantSizeLowStockForVariant($variant)));

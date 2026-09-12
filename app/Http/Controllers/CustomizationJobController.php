@@ -13,14 +13,48 @@ use Illuminate\Validation\ValidationException;
 class CustomizationJobController extends Controller
 {
     public function show(Request $request, CustomizationJob $customizationJob): JsonResponse
-    { $this->authorize($request, $customizationJob); return response()->json(['data' => $customizationJob->load(['order', 'orderItem'])]); }
+    { $this->authorize($request, $customizationJob); return response()->json(['data' => $customizationJob->load(['order', 'orderItem', 'customer'])]); }
 
     public function store(Request $request): JsonResponse
     {
-        abort_unless(in_array($request->user()->role, ['admin', 'super-admin'], true), 403);
-        $data = $request->validate(['order_id' => ['required', 'integer', 'exists:orders,id'], 'order_item_id' => ['nullable', 'integer', 'exists:order_items,id'], 'print_name' => ['nullable', 'string', 'max:100'], 'shirt_number' => ['nullable', 'string', 'max:10'], 'font' => ['nullable', 'string', 'max:80'], 'style' => ['nullable', 'string', 'max:80'], 'print_color' => ['nullable', 'string', 'max:50'], 'notes' => ['nullable', 'string', 'max:2000'], 'artwork_path' => ['nullable', 'string', 'max:255']]);
+        $isAdmin = in_array($request->user()->role, ['admin', 'super-admin'], true);
+        abort_unless($isAdmin || $request->user()->role === 'customer', 403);
+        $data = $request->validate([
+            'order_id' => ['required', 'integer', 'exists:orders,id'],
+            'order_item_id' => ['nullable', 'integer', 'exists:order_items,id'],
+            'customization_name' => ['nullable', 'string', 'max:100'],
+            'customization_number' => ['nullable', 'string', 'max:20'],
+            'customization_notes' => ['nullable', 'string', 'max:2000'],
+            'print_name' => ['nullable', 'string', 'max:100'],
+            'shirt_number' => ['nullable', 'string', 'max:10'],
+            'font' => ['nullable', 'string', 'max:80'],
+            'style' => ['nullable', 'string', 'max:80'],
+            'print_color' => ['nullable', 'string', 'max:50'],
+            'notes' => ['nullable', 'string', 'max:2000'],
+            'artwork_path' => ['nullable', 'string', 'max:255'],
+        ]);
+        $order = Order::query()->findOrFail($data['order_id']);
+        if (! $isAdmin && (int) $order->user_id !== (int) $request->user()->id) abort(403);
+        if (! $isAdmin && empty($data['order_item_id'])) throw ValidationException::withMessages(['order_item_id' => 'Vui lòng chọn sản phẩm cần customization.']);
         if (! empty($data['order_item_id']) && ! OrderItem::whereKey($data['order_item_id'])->where('order_id', $data['order_id'])->exists()) throw ValidationException::withMessages(['order_item_id' => 'Sản phẩm không thuộc đơn hàng.']);
-        $job = CustomizationJob::create($data)->load(['order', 'orderItem']);
+        if (! $isAdmin && blank($data['customization_name'] ?? null) && blank($data['customization_number'] ?? null) && blank($data['customization_notes'] ?? null)) {
+            throw ValidationException::withMessages(['customization' => 'Chỉ tạo yêu cầu khi khách hàng đã nhập nội dung customization.']);
+        }
+        $data['customer_id'] = $order->user_id;
+        $data['print_name'] = $data['print_name'] ?? $data['customization_name'] ?? null;
+        $data['shirt_number'] = $data['shirt_number'] ?? $data['customization_number'] ?? null;
+        $data['notes'] = $data['notes'] ?? $data['customization_notes'] ?? null;
+        if (! empty($data['order_item_id'])) {
+            $activeJob = CustomizationJob::query()->where('order_item_id', $data['order_item_id'])->where('status', '!=', 'completed')->exists();
+            if ($activeJob) throw ValidationException::withMessages(['customization' => 'Sản phẩm đã có yêu cầu customization đang xử lý.']);
+            $item = OrderItem::query()->findOrFail($data['order_item_id']);
+            $item->update([
+                'customization_name' => $data['customization_name'] ?? $data['print_name'],
+                'customization_number' => $data['customization_number'] ?? $data['shirt_number'],
+                'customization_notes' => $data['customization_notes'] ?? $data['notes'],
+            ]);
+        }
+        $job = CustomizationJob::create($data)->load(['order', 'orderItem', 'customer']);
         app(\App\Services\ActivityLogService::class)->record('customization.created', $job, [], $request->user()->id);
         app(\App\Services\AdminNotificationService::class)->notify('customization_attention', 'Có yêu cầu customization mới', (string) $job->id, [], $job);
         return response()->json(['data' => $job], 201);

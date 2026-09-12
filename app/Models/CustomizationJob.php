@@ -13,5 +13,7 @@ class CustomizationJob extends Model
 
     public function order(): BelongsTo { return $this->belongsTo(Order::class); }
 
+    public function customer(): BelongsTo { return $this->belongsTo(User::class, 'customer_id'); }
+
     public function orderItem(): BelongsTo { return $this->belongsTo(OrderItem::class); }
 }

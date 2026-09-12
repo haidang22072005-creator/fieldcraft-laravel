@@ -48,12 +48,14 @@ class RetryMoMoPayment
             if ($order->coupon_id) {
                 $coupon = Coupon::query()->lockForUpdate()->find($order->coupon_id);
                 $valid = $coupon && $coupon->is_active
+                    && (! $coupon->user_id || (int) $coupon->user_id === (int) $order->user_id)
+                    && (! $coupon->starts_at || $coupon->starts_at->isPast())
                     && (! $coupon->expires_at || $coupon->expires_at->isFuture())
                     && $order->subtotal >= $coupon->minimum_order_value
                     && ($coupon->usage_limit === null || $coupon->used_count < $coupon->usage_limit)
                     && ($coupon->per_user_limit === null || $coupon->usages()->where('user_id', $order->user_id)->count() < $coupon->per_user_limit);
                 $discount = $coupon?->type === 'percent'
-                    ? (int) round($order->subtotal * $coupon->value / 100)
+                    ? min((int) round($order->subtotal * $coupon->value / 100), (int) ($coupon?->max_discount ?? PHP_INT_MAX))
                     : min((int) ($coupon?->value ?? 0), (int) $order->subtotal);
                 if (! $valid || $discount !== (int) $order->discount) {
                     throw ValidationException::withMessages(['payment' => 'Mã giảm giá không còn hợp lệ để thanh toán lại.']);

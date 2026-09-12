@@ -25,6 +25,7 @@ class User extends Authenticatable implements MustVerifyEmail
         'phone',
         'password',
         'role',
+        'avatar',
     ];
 
     /**
@@ -85,4 +86,7 @@ class User extends Authenticatable implements MustVerifyEmail
     public function activityLogs(): HasMany { return $this->hasMany(ActivityLog::class, 'actor_id'); }
     public function adminNotifications(): HasMany { return $this->hasMany(AdminNotification::class); }
     public function loyaltyPointTransactions(): HasMany { return $this->hasMany(LoyaltyPointTransaction::class); }
+    public function vouchers(): HasMany { return $this->hasMany(Coupon::class); }
+    public function customizationJobs(): HasMany { return $this->hasMany(CustomizationJob::class, 'customer_id'); }
+    public function supportTickets(): HasMany { return $this->hasMany(SupportTicket::class); }
 }

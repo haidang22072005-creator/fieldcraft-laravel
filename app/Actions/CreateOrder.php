@@ -112,6 +112,8 @@ class CreateOrder
         $valid = $coupon
             && $userId
             && $coupon->is_active
+            && (! $coupon->user_id || (int) $coupon->user_id === (int) $userId)
+            && (! $coupon->starts_at || $coupon->starts_at->isPast())
             && (! $coupon->expires_at || $coupon->expires_at->isFuture())
             && $subtotal >= $coupon->minimum_order_value
             && ($coupon->usage_limit === null || $coupon->used_count < $coupon->usage_limit);
@@ -125,7 +127,7 @@ class CreateOrder
         }
 
         $discount = $coupon->type === 'percent'
-            ? (int) round($subtotal * $coupon->value / 100)
+            ? min((int) round($subtotal * $coupon->value / 100), (int) ($coupon->max_discount ?? PHP_INT_MAX))
             : min($coupon->value, $subtotal);
 
         return [$coupon, $discount];

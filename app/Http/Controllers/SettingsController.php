@@ -8,6 +8,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Str;
 use Illuminate\Validation\Rules\Password;
 use Illuminate\View\View;
 use App\Services\LoyaltyService;
@@ -34,10 +35,25 @@ class SettingsController extends Controller
 
     public function updateAvatar(Request $request): RedirectResponse
     {
-        $request->validate(['avatar'=>['required','image','max:5120']]); $user=$request->user();
-        if ($user->avatar) Storage::disk('public')->delete($user->avatar);
-        $user->update(['avatar'=>$request->file('avatar')->store('avatars','public')]);
+        $request->validate(['avatar'=>['required','image','mimes:jpg,jpeg,png,webp','max:2048']]);
+        $user = $request->user();
+        $file = $request->file('avatar');
+        $path = 'avatars/'.Str::uuid().'.'.strtolower($file->getClientOriginalExtension());
+        $newPath = $file->storeAs('avatars', basename($path), 'public');
+        $oldPath = $user->avatar;
+        $user->update(['avatar' => $newPath]);
+        if ($this->safeAvatarPath($oldPath)) Storage::disk('public')->delete($oldPath);
         return back()->with('success','Đã cập nhật ảnh đại diện.');
+    }
+
+    public function removeAvatar(Request $request): RedirectResponse
+    {
+        $user = $request->user();
+        $oldPath = $user->avatar;
+        $user->update(['avatar' => null]);
+        if ($this->safeAvatarPath($oldPath)) Storage::disk('public')->delete($oldPath);
+
+        return back()->with('success', 'Đã xóa ảnh đại diện.');
     }
 
     public function updatePassword(Request $request): RedirectResponse
@@ -68,6 +84,15 @@ class SettingsController extends Controller
         $data=$request->validate(['label'=>['required','string','max:30'],'recipient_name'=>['required','string','max:100'],'phone'=>['required','string','max:25'],'province_code'=>['required','string','max:100'],'ward_code'=>['nullable','string','max:100'],'address_line'=>['required','string','max:255'],'is_default'=>['nullable','boolean']]);
         if ($request->boolean('is_default')) $request->user()->addresses()->update(['is_default'=>false]);
         $address->fill($data); $address->user_id=$request->user()->id; $address->is_default=$request->boolean('is_default'); $address->save();
+    }
+
+    private function safeAvatarPath(?string $path): bool
+    {
+        return is_string($path)
+            && str_starts_with($path, 'avatars/')
+            && ! str_contains($path, '..')
+            && ! str_contains($path, '\\')
+            && basename($path) === substr($path, strlen('avatars/'));
     }
 
     public function destroyAccount(Request $request): RedirectResponse
