@@ -2,12 +2,12 @@
 
 namespace App\Models;
 
-use Illuminate\Contracts\Auth\MustVerifyEmail;
 use Database\Factories\UserFactory;
+use Illuminate\Contracts\Auth\MustVerifyEmail;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
-use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class User extends Authenticatable implements MustVerifyEmail
 {
@@ -49,13 +49,33 @@ class User extends Authenticatable implements MustVerifyEmail
         ];
     }
 
-    public function orders(): HasMany { return $this->hasMany(Order::class); }
+    public function orders(): HasMany
+    {
+        return $this->hasMany(Order::class);
+    }
 
-    public function addresses(): HasMany { return $this->hasMany(Address::class); }
+    public function addresses(): HasMany
+    {
+        return $this->hasMany(Address::class);
+    }
 
-    public function reviews(): HasMany { return $this->hasMany(Review::class); }
+    public function reviews(): HasMany
+    {
+        return $this->hasMany(Review::class);
+    }
 
-    public function completedOrders(): HasMany { return $this->hasMany(Order::class, 'completed_by'); }
+    public function completedOrders(): HasMany
+    {
+        return $this->hasMany(Order::class, 'completed_by');
+    }
 
-    public function teamProfiles(): HasMany { return $this->hasMany(TeamProfile::class); }
+    public function teamProfiles(): HasMany
+    {
+        return $this->hasMany(TeamProfile::class);
+    }
+
+    public function teamOrderDrafts(): HasMany
+    {
+        return $this->hasMany(TeamOrderDraft::class, 'created_by');
+    }
 }

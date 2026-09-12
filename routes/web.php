@@ -1,25 +1,26 @@
 <?php
 
+use App\Http\Controllers\Admin\AccountController;
 use App\Http\Controllers\Admin\CouponController;
 use App\Http\Controllers\Admin\CustomerController;
+use App\Http\Controllers\Admin\IntelligenceController;
 use App\Http\Controllers\Admin\OrderController;
 use App\Http\Controllers\Admin\ProductController;
+use App\Http\Controllers\Admin\ReviewController as AdminReviewController;
+use App\Http\Controllers\Admin\TeamOrderDraftController;
 use App\Http\Controllers\AuthController;
 use App\Http\Controllers\CartController;
 use App\Http\Controllers\CheckoutController;
+use App\Http\Controllers\CustomizationJobController;
 use App\Http\Controllers\LocationController;
 use App\Http\Controllers\MoMoPaymentController;
-use App\Http\Controllers\PayOSPaymentController;
 use App\Http\Controllers\MoMoSandboxController;
-use App\Http\Controllers\StorefrontController;
-use App\Http\Controllers\SettingsController;
+use App\Http\Controllers\PayOSPaymentController;
 use App\Http\Controllers\PurchaseController;
 use App\Http\Controllers\ReviewController;
-use App\Http\Controllers\Admin\ReviewController as AdminReviewController;
-use App\Http\Controllers\Admin\AccountController;
-use App\Http\Controllers\Admin\IntelligenceController;
+use App\Http\Controllers\SettingsController;
+use App\Http\Controllers\StorefrontController;
 use App\Http\Controllers\TeamProfileController;
-use App\Http\Controllers\CustomizationJobController;
 use Illuminate\Foundation\Auth\EmailVerificationRequest;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
@@ -65,11 +66,15 @@ Route::post('/logout', [AuthController::class, 'destroy'])->middleware('auth')->
 Route::get('/email/verify', fn () => view('auth.verify-email'))->middleware('auth')->name('verification.notice');
 Route::get('/email/verify/{id}/{hash}', function (EmailVerificationRequest $request) {
     $request->fulfill();
+
     return redirect()->route('settings')->with('success', 'Email đã được xác thực.');
 })->middleware(['auth', 'signed', 'throttle:6,1'])->name('verification.verify');
 Route::post('/email/verification-notification', function (Request $request) {
-    if ($request->user()->hasVerifiedEmail()) return redirect()->route('settings');
+    if ($request->user()->hasVerifiedEmail()) {
+        return redirect()->route('settings');
+    }
     $request->user()->sendEmailVerificationNotification();
+
     return back()->with('status', 'Đã gửi lại email xác thực.');
 })->middleware(['auth', 'throttle:6,1'])->name('verification.send');
 Route::get('/settings', [SettingsController::class, 'index'])->name('settings');
@@ -124,7 +129,10 @@ Route::middleware(['auth', 'role:super-admin,admin'])->prefix('admin')->name('ad
     Route::apiResource('teams', TeamProfileController::class)->only(['index', 'show', 'store', 'update'])->parameters(['teams' => 'teamProfile']);
     Route::post('/teams/{teamProfile}/members', [TeamProfileController::class, 'storeMember'])->name('teams.members.store');
     Route::patch('/teams/{teamProfile}/members/{teamMember}', [TeamProfileController::class, 'updateMember'])->name('teams.members.update');
-    Route::get('/teams/{teamProfile}/draft-reorder', [TeamProfileController::class, 'draftReorder'])->name('teams.draft-reorder');
+    Route::get('/teams/{teamProfile}/draft-reorder', [TeamOrderDraftController::class, 'showOrCreate'])->name('teams.draft-reorder');
+    Route::post('/teams/{teamProfile}/draft-reorder', [TeamOrderDraftController::class, 'store'])->name('teams.draft-reorder.store');
+    Route::get('/team-order-drafts/{teamOrderDraft}', [TeamOrderDraftController::class, 'show'])->name('team-order-drafts.show');
+    Route::patch('/team-order-drafts/{teamOrderDraft}', [TeamOrderDraftController::class, 'update'])->name('team-order-drafts.update');
     Route::post('/customization-jobs', [CustomizationJobController::class, 'store'])->name('customization-jobs.store');
     Route::get('/customization-jobs/{customizationJob}', [CustomizationJobController::class, 'show'])->name('customization-jobs.show');
     Route::patch('/customization-jobs/{customizationJob}/status', [CustomizationJobController::class, 'updateStatus'])->name('customization-jobs.status');
@@ -140,7 +148,6 @@ Route::middleware(['auth', 'verified'])->prefix('teams')->name('teams.')->group(
     Route::patch('/{teamProfile}', [TeamProfileController::class, 'update'])->name('update');
     Route::post('/{teamProfile}/members', [TeamProfileController::class, 'storeMember'])->name('members.store');
     Route::patch('/{teamProfile}/members/{teamMember}', [TeamProfileController::class, 'updateMember'])->name('members.update');
-    Route::get('/{teamProfile}/draft-reorder', [TeamProfileController::class, 'draftReorder'])->name('draft-reorder');
 });
 Route::middleware(['auth', 'verified'])->prefix('customization-jobs')->name('customization-jobs.')->group(function () {
     Route::get('/{customizationJob}', [CustomizationJobController::class, 'show'])->name('show');

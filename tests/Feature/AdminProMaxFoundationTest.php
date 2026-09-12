@@ -8,7 +8,7 @@ use App\Models\OrderItem;
 use App\Models\Payment;
 use App\Models\Product;
 use App\Models\ProductVariant;
-use App\Models\Review;
+use App\Models\TeamMember;
 use App\Models\TeamProfile;
 use App\Models\User;
 use App\Services\AdminIntelligenceService;
@@ -94,5 +94,52 @@ class AdminProMaxFoundationTest extends TestCase
         $this->actingAs($admin)->patchJson(route('admin.customization-jobs.status', $job), ['status' => 'customer_approval'])->assertOk();
         $this->actingAs($owner)->patchJson(route('customization-jobs.status', $job), ['status' => 'approved'])->assertOk();
         $this->actingAs($owner)->patchJson(route('customization-jobs.status', $job), ['status' => 'completed'])->assertStatus(422);
+    }
+
+    public function test_team_order_draft_persists_roster_is_idempotent_and_is_admin_only(): void
+    {
+        $owner = User::factory()->create(['role' => 'customer']);
+        $admin = User::factory()->create(['role' => 'admin']);
+        $team = TeamProfile::create(['user_id' => $owner->id, 'team_name' => 'Draft FC']);
+        $member = TeamMember::create(['team_profile_id' => $team->id, 'player_name' => 'Nguyen Van A', 'shirt_name' => 'A', 'shirt_number' => 7, 'shirt_size' => 'L']);
+        $variant = ProductVariant::create([
+            'product_id' => Product::create(['name' => 'Draft Boot', 'slug' => 'draft-boot-'.str()->random(8), 'category' => 'Giày'])->id,
+            'sku' => 'DRAFT-'.str()->random(8), 'color' => 'Đen', 'size' => '42', 'price' => 300000, 'stock' => 9,
+        ]);
+
+        $this->actingAs($owner)->getJson(route('admin.teams.draft-reorder', $team))->assertForbidden();
+        $first = $this->actingAs($admin)->getJson(route('admin.teams.draft-reorder', $team))->assertOk();
+        $first->assertJsonPath('status', 'active')->assertJsonPath('data.roster_snapshot.team_name', 'Draft FC');
+        $draftId = $first->json('data.id');
+
+        $this->actingAs($admin)->getJson(route('admin.teams.draft-reorder', $team))->assertOk()->assertJsonPath('data.id', $draftId);
+        $this->assertDatabaseCount('team_order_drafts', 1);
+        $this->assertDatabaseCount('team_order_draft_items', 1);
+        $this->assertDatabaseHas('team_order_draft_items', ['team_order_draft_id' => $draftId, 'team_member_id' => $member->id, 'player_name' => 'Nguyen Van A']);
+        $this->assertSame(9, $variant->fresh()->stock);
+        $this->assertDatabaseCount('orders', 0);
+        $this->assertDatabaseCount('payments', 0);
+
+        $this->actingAs($admin)->patchJson(route('admin.team-order-drafts.update', $draftId), [
+            'items' => [['team_member_id' => $member->id, 'product_variant_id' => $variant->id, 'quantity' => 2]],
+        ])->assertOk()->assertJsonPath('data.items.0.product_variant_id', $variant->id);
+        $this->assertSame(9, $variant->fresh()->stock);
+    }
+
+    public function test_dashboard_revenue_trends_compare_like_for_like_periods(): void
+    {
+        Carbon::setTestNow(Carbon::create(2026, 9, 12, 12, 0, 0));
+        try {
+            $customer = User::factory()->create(['role' => 'customer']);
+            $this->order($customer, 'completed', ['total' => 100000, 'created_at' => Carbon::create(2026, 9, 5, 10)]);
+            $this->order($customer, 'completed', ['total' => 200000, 'created_at' => Carbon::create(2026, 8, 5, 10)]);
+            $this->order($customer, 'completed', ['total' => 900000, 'created_at' => Carbon::create(2026, 8, 20, 10)]);
+
+            $trend = app(AdminIntelligenceService::class)->dashboard()['trends']['month_revenue'];
+            $this->assertSame(100000, $trend['current']);
+            $this->assertSame(200000, $trend['previous']);
+        } finally {
+            Carbon::setTestNow();
+        }
     }
 }

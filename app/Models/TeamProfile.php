@@ -10,7 +10,18 @@ class TeamProfile extends Model
 {
     protected $guarded = [];
 
-    public function owner(): BelongsTo { return $this->belongsTo(User::class, 'user_id'); }
+    public function owner(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'user_id');
+    }
 
-    public function members(): HasMany { return $this->hasMany(TeamMember::class); }
+    public function members(): HasMany
+    {
+        return $this->hasMany(TeamMember::class);
+    }
+
+    public function orderDrafts(): HasMany
+    {
+        return $this->hasMany(TeamOrderDraft::class);
+    }
 }
