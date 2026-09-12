@@ -1152,6 +1152,7 @@
             $pendingOrdersCount = \App\Models\Order::where('status', 'pending')->count();
             $pendingReviewsCount = \App\Models\Review::where('status', 'pending')->count();
             $lowStockCount = \App\Models\ProductVariant::where('stock', '<=', 5)->count();
+            $openTicketsCount = \App\Models\SupportTicket::whereIn('status', ['open', 'in_progress'])->count();
             $currentAdminId = auth()->id();
             $unreadNotificationsCount = $currentAdminId ? \App\Models\AdminNotification::where('user_id', $currentAdminId)->whereNull('read_at')->count() : 0;
             $realNotifications = $currentAdminId ? \App\Models\AdminNotification::where('user_id', $currentAdminId)->latest()->take(15)->get() : collect();
@@ -1167,10 +1168,10 @@
                 </a>
             </div>
 
-            {{-- Group 2: BÁN HÀNG --}}
+            {{-- Group 2: BÁN HÀNG & VẬN HÀNH --}}
             <div class="nav-group">
-                <div class="nav-heading">BÁN HÀNG</div>
-                <a class="nav-link {{ request()->routeIs('admin.orders.*') && !request()->has('status') ? 'active' : '' }}" href="{{ route('admin.orders.index') }}">
+                <div class="nav-heading">BÁN HÀNG & VẬN HÀNH</div>
+                <a class="nav-link {{ request()->routeIs('admin.orders.*') && !request()->has('status') && !request()->routeIs('admin.orders.kanban') ? 'active' : '' }}" href="{{ route('admin.orders.index') }}">
                     <span class="nav-icon">□</span>
                     <span>Đơn hàng</span>
                     @if($pendingOrdersCount > 0)
@@ -1185,15 +1186,22 @@
                     <span class="nav-icon">🚚</span>
                     <span>Vận chuyển</span>
                 </a>
-                <a class="nav-link {{ request()->routeIs('admin.dashboard') && in_array(request('tab'), ['revenue', 'finance']) ? 'active' : '' }}" href="{{ route('admin.dashboard', ['tab' => 'revenue']) }}#revenue">
-                    <span class="nav-icon">💳</span>
-                    <span>Doanh thu & Tài chính</span>
+                <a class="nav-link {{ request()->routeIs('admin.dashboard') && request('tab') === 'customization' ? 'active' : '' }}" href="{{ route('admin.dashboard', ['tab' => 'customization']) }}#customization">
+                    <span class="nav-icon">🎽</span>
+                    <span>Xưởng in & Cá nhân hóa</span>
+                </a>
+                <a class="nav-link {{ request()->routeIs('admin.support.tickets.*') || (request()->routeIs('admin.dashboard') && request('tab') === 'support') ? 'active' : '' }}" href="{{ route('admin.dashboard', ['tab' => 'support']) }}#support">
+                    <span class="nav-icon">🎧</span>
+                    <span>Hỗ trợ khách hàng</span>
+                    @if($openTicketsCount > 0)
+                        <span class="nav-badge warning">{{ $openTicketsCount }}</span>
+                    @endif
                 </a>
             </div>
 
-            {{-- Group 3: SẢN PHẨM --}}
+            {{-- Group 3: SẢN PHẨM & KHO --}}
             <div class="nav-group">
-                <div class="nav-heading">SẢN PHẨM</div>
+                <div class="nav-heading">SẢN PHẨM & KHO</div>
                 <a class="nav-link {{ request()->routeIs('admin.products.*') ? 'active' : '' }}" href="{{ route('admin.products.index') }}">
                     <span class="nav-icon">◇</span>
                     <span>Sản phẩm</span>
@@ -1211,38 +1219,35 @@
                 </a>
             </div>
 
-            {{-- Group 4: KHÁCH HÀNG --}}
+            {{-- Group 4: KHÁCH HÀNG & TĂNG TRƯỞNG --}}
             <div class="nav-group">
-                <div class="nav-heading">KHÁCH HÀNG</div>
+                <div class="nav-heading">KHÁCH HÀNG & TĂNG TRƯỞNG</div>
                 <a class="nav-link {{ request()->routeIs('admin.customers.*') ? 'active' : '' }}" href="{{ route('admin.customers.index') }}">
                     <span class="nav-icon">👤</span>
                     <span>Khách hàng</span>
-                </a>
-                <a class="nav-link {{ request()->routeIs('admin.dashboard') && request('tab') === 'teams' ? 'active' : '' }}" href="{{ route('admin.dashboard', ['tab' => 'teams']) }}#teams">
-                    <span class="nav-icon">🛡</span>
-                    <span>Đội bóng</span>
                 </a>
                 <a class="nav-link {{ request()->routeIs('admin.dashboard') && request('tab') === 'loyalty' ? 'active' : '' }}" href="{{ route('admin.dashboard', ['tab' => 'loyalty']) }}#loyalty">
                     <span class="nav-icon">👑</span>
                     <span>Hạng thành viên</span>
                 </a>
-            </div>
-
-            {{-- Group 5: CÁ NHÂN HÓA --}}
-            <div class="nav-group">
-                <div class="nav-heading">CÁ NHÂN HÓA</div>
-                <a class="nav-link {{ request()->routeIs('admin.dashboard') && request('tab') === 'customization' ? 'active' : '' }}" href="{{ route('admin.dashboard', ['tab' => 'customization']) }}#customization">
-                    <span class="nav-icon">🎽</span>
-                    <span>In tên & số</span>
+                <a class="nav-link {{ request()->routeIs('admin.dashboard') && request('tab') === 'teams' ? 'active' : '' }}" href="{{ route('admin.dashboard', ['tab' => 'teams']) }}#teams">
+                    <span class="nav-icon">🛡</span>
+                    <span>Đội bóng</span>
                 </a>
-            </div>
-
-            {{-- Group 6: MARKETING --}}
-            <div class="nav-group">
-                <div class="nav-heading">MARKETING</div>
+                <a class="nav-link {{ request()->routeIs('admin.coupons.*') ? 'active' : '' }}" href="{{ route('admin.coupons.index') }}">
+                    <span class="nav-icon">%</span>
+                    <span>Mã giảm giá & Voucher</span>
+                </a>
+                <a class="nav-link {{ request()->routeIs('admin.reviews.*') ? 'active' : '' }}" href="{{ route('admin.reviews.index') }}">
+                    <span class="nav-icon">★</span>
+                    <span>Đánh giá</span>
+                    @if($pendingReviewsCount > 0)
+                        <span class="nav-badge warning">{{ $pendingReviewsCount }}</span>
+                    @endif
+                </a>
                 <a class="nav-link {{ request()->routeIs('admin.dashboard') && request('tab') === 'trends' ? 'active' : '' }}" href="{{ route('admin.dashboard', ['tab' => 'trends']) }}#trends">
                     <span class="nav-icon">🔥</span>
-                    <span>Trend Radar</span>
+                    <span>Marketing Radar</span>
                 </a>
                 <a class="nav-link {{ request()->routeIs('admin.dashboard') && request('tab') === 'matchday' ? 'active' : '' }}" href="{{ route('admin.dashboard', ['tab' => 'matchday']) }}#matchday">
                     <span class="nav-icon">⚽</span>
@@ -1256,34 +1261,22 @@
                     <span class="nav-icon">⏳</span>
                     <span>Giỏ hàng bị bỏ quên</span>
                 </a>
-                <a class="nav-link {{ request()->routeIs('admin.coupons.*') ? 'active' : '' }}" href="{{ route('admin.coupons.index') }}">
-                    <span class="nav-icon">%</span>
-                    <span>Mã giảm giá</span>
-                </a>
-            </div>
-
-            {{-- Group 7: CỘNG ĐỒNG --}}
-            <div class="nav-group">
-                <div class="nav-heading">CỘNG ĐỒNG</div>
-                <a class="nav-link {{ request()->routeIs('admin.reviews.*') ? 'active' : '' }}" href="{{ route('admin.reviews.index') }}">
-                    <span class="nav-icon">★</span>
-                    <span>Đánh giá</span>
-                    @if($pendingReviewsCount > 0)
-                        <span class="nav-badge warning">{{ $pendingReviewsCount }}</span>
-                    @endif
-                </a>
                 <a class="nav-link {{ request()->routeIs('admin.dashboard') && request('tab') === 'second-hand' ? 'active' : '' }}" href="{{ route('admin.dashboard', ['tab' => 'second-hand']) }}#second-hand">
                     <span class="nav-icon">♻</span>
                     <span>Second-hand</span>
                 </a>
             </div>
 
-            {{-- Group 8: HỆ THỐNG --}}
+            {{-- Group 5: HỆ THỐNG & TÀI CHÍNH --}}
             <div class="nav-group">
-                <div class="nav-heading">HỆ THỐNG</div>
+                <div class="nav-heading">HỆ THỐNG & TÀI CHÍNH</div>
+                <a class="nav-link {{ request()->routeIs('admin.dashboard') && in_array(request('tab'), ['revenue', 'finance']) ? 'active' : '' }}" href="{{ route('admin.dashboard', ['tab' => 'revenue']) }}#revenue">
+                    <span class="nav-icon">💳</span>
+                    <span>Doanh thu & Tài chính</span>
+                </a>
                 <a class="nav-link {{ request()->routeIs('admin.accounts.*') ? 'active' : '' }}" href="{{ route('admin.accounts.index') }}">
                     <span class="nav-icon">◎</span>
-                    <span>Tài khoản</span>
+                    <span>Tài khoản quản trị</span>
                 </a>
                 <a class="nav-link {{ request()->routeIs('admin.dashboard') && request('tab') === 'activity-log' ? 'active' : '' }}" href="{{ route('admin.dashboard', ['tab' => 'activity-log']) }}#activity-log">
                     <span class="nav-icon">📋</span>
