@@ -140,7 +140,7 @@
     /* ── KPI Grid ── */
     .kpi-grid {
         display: grid;
-        grid-template-columns: repeat(4, 1fr);
+        grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
         gap: 16px;
         margin-bottom: 24px;
     }
@@ -413,6 +413,120 @@
     }
     .wf-arrow { color: var(--border-sub); font-size: 14px; }
 
+    /* ── Kanban Board Styles ── */
+    .kanban-board {
+        display: flex;
+        gap: 16px;
+        overflow-x: auto;
+        padding-bottom: 14px;
+        -webkit-overflow-scrolling: touch;
+        scrollbar-width: thin;
+        scrollbar-color: var(--border-panel) transparent;
+    }
+    .kanban-column {
+        flex: 0 0 290px;
+        min-width: 290px;
+        background: var(--bg-panel);
+        border: 1px solid var(--border-panel);
+        border-radius: 8px;
+        display: flex;
+        flex-direction: column;
+        max-height: 850px;
+    }
+    .kanban-col-head {
+        padding: 12px 14px;
+        border-bottom: 1px solid var(--border-panel);
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        background: var(--bg-panel-sub);
+        border-radius: 8px 8px 0 0;
+    }
+    .kanban-col-title {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        font: 700 13px/1 'Oswald', sans-serif;
+        text-transform: uppercase;
+        letter-spacing: .04em;
+        color: var(--text-main);
+    }
+    .kanban-col-count {
+        font: 700 11px/1 'DM Mono', monospace;
+        background: var(--bg-card);
+        border: 1px solid var(--border-panel);
+        padding: 2px 7px;
+        border-radius: 10px;
+        color: var(--text-muted);
+    }
+    .kanban-cards-list {
+        padding: 12px;
+        overflow-y: auto;
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+        flex: 1;
+    }
+    .kanban-card {
+        background: var(--bg-panel-sub);
+        border: 1px solid var(--border-panel);
+        border-radius: 6px;
+        padding: 12px;
+        cursor: pointer;
+        transition: all .15s ease;
+    }
+    .kanban-card:hover {
+        border-color: var(--lime);
+        transform: translateY(-2px);
+    }
+    .kanban-card-top {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 8px;
+    }
+    .kanban-card-id {
+        font: 700 12px/1 'DM Mono', monospace;
+        color: var(--lime);
+    }
+    .kanban-health-pill {
+        font: 700 9px/1 'DM Mono', monospace;
+        padding: 2px 6px;
+        border-radius: 3px;
+        letter-spacing: .04em;
+    }
+    .kanban-health-pill.healthy {
+        background: var(--success-bg);
+        color: var(--lime);
+        border: 1px solid var(--success-border);
+    }
+    .kanban-health-pill.warning {
+        background: var(--warning-bg);
+        color: var(--warning);
+        border: 1px solid var(--warning-border);
+    }
+    .kanban-health-pill.critical {
+        background: var(--danger-bg);
+        color: var(--danger);
+        border: 1px solid var(--danger-border);
+    }
+    .kanban-card-customer {
+        font-weight: 700;
+        color: var(--text-main);
+        font-size: 13px;
+        margin-bottom: 2px;
+    }
+    .kanban-card-meta {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-top: 6px;
+    }
+    .kanban-card-total {
+        font: 700 13px/1 'DM Mono', monospace;
+        color: var(--lime);
+    }
+
     /* ── Responsive ── */
     @media (max-width: 1200px) {
         .kpi-grid { grid-template-columns: repeat(2, 1fr); }
@@ -445,7 +559,7 @@
         @endif
     </button>
     <button class="dash-tab-btn" data-tab="kanban">
-        <span>▥ Order Kanban</span>
+        <span>▥ Kanban đơn hàng</span>
         @if($kanbanPending->count() > 0)
             <span class="tab-badge" style="background:var(--danger);color:#fff">{{ $kanbanPending->count() }}</span>
         @endif
@@ -466,7 +580,7 @@
         <span>⚡ Hiệu suất sản phẩm</span>
     </button>
     <button class="dash-tab-btn" data-tab="teams">
-        <span>🛡 Đội bóng & In ấn</span>
+        <span>🛡 Đội bóng & In tên số</span>
     </button>
     <button class="dash-tab-btn" data-tab="loyalty">
         <span>👑 Hạng thành viên</span>
@@ -478,16 +592,16 @@
         <span>⚽ Matchday</span>
     </button>
     <button class="dash-tab-btn" data-tab="cross-sell">
-        <span>🛒 Cross-selling</span>
+        <span>🛒 Bán chéo sản phẩm</span>
     </button>
     <button class="dash-tab-btn" data-tab="abandoned-carts">
-        <span>⏳ Giỏ hàng bỏ rơi</span>
+        <span>⏳ Giỏ hàng bị bỏ quên</span>
     </button>
     <button class="dash-tab-btn" data-tab="second-hand">
-        <span>♻ Second-hand Hub</span>
+        <span>♻ Trạm Second-hand</span>
     </button>
     <button class="dash-tab-btn" data-tab="passport">
-        <span>🎫 Boot Passport</span>
+        <span>🎫 Hộ chiếu sản phẩm</span>
     </button>
     <button class="dash-tab-btn" data-tab="activity-log">
         <span>📜 Nhật ký hoạt động</span>
@@ -666,7 +780,7 @@
     </section>
 
     {{-- Recent Orders & Status Distribution --}}
-    <div style="display:grid;grid-template-columns:1.6fr 1fr;gap:20px;">
+    <div style="display:grid;grid-template-columns:repeat(auto-fit, minmax(360px, 1fr));gap:20px;">
         {{-- Recent Orders --}}
         <section class="panel" style="margin-bottom:0">
             <div class="toolbar">
@@ -792,7 +906,7 @@
             <h3 style="font:700 13px/1 'Oswald',sans-serif;text-transform:uppercase;letter-spacing:.04em;margin-bottom:14px">
                 Phân bổ theo phương thức thanh toán
             </h3>
-            <div style="display:grid;grid-template-columns:repeat(3, 1fr);gap:14px" id="paymentBreakdownCards">
+            <div style="display:grid;grid-template-columns:repeat(auto-fit, minmax(260px, 1fr));gap:14px" id="paymentBreakdownCards">
                 @php
                     $breakdown = $defaultRev['payment_breakdown'] ?? [];
                     $totalRevSum = max(1, array_sum(array_column($breakdown, 'amount')));
@@ -1311,7 +1425,7 @@
                     </span>
                 </div>
 
-                <div style="display:grid;grid-template-columns:repeat(4, 1fr);gap:12px;background:var(--bg-panel);border:1px solid var(--border-panel);border-radius:6px;padding:12px;margin-bottom:14px">
+                <div style="display:grid;grid-template-columns:repeat(auto-fit, minmax(180px, 1fr));gap:12px;background:var(--bg-panel);border:1px solid var(--border-panel);border-radius:6px;padding:12px;margin-bottom:14px">
                     <div>
                         <span class="muted" style="font-size:10px;text-transform:uppercase">Tên in</span>
                         <div class="mono" style="font-size:16px;font-weight:700;color:var(--lime)">{{ $job->print_name ?: '—' }}</div>
@@ -1424,8 +1538,16 @@
                                         <span class="status completed" style="font-size:9px;padding:2px 6px">ĐÃ THANH TOÁN</span>
                                     @elseif($order->payment_status === 'failed')
                                         <span class="status cancelled" style="font-size:9px;padding:2px 6px">LỖI THANH TOÁN</span>
+                                    @elseif($order->payment_status === 'refund_required')
+                                        <span class="status cancelled" style="font-size:9px;padding:2px 6px">CẦN HOÀN TIỀN</span>
+                                    @elseif($order->payment_status === 'refund_pending')
+                                        <span class="status pending" style="font-size:9px;padding:2px 6px">ĐANG XỬ LÝ HOÀN TIỀN</span>
+                                    @elseif($order->payment_status === 'refunded')
+                                        <span class="status completed" style="font-size:9px;padding:2px 6px">ĐÃ HOÀN TIỀN</span>
+                                    @elseif($order->payment_status === 'refund_failed')
+                                        <span class="status cancelled" style="font-size:9px;padding:2px 6px">HOÀN TIỀN THẤT BẠI</span>
                                     @else
-                                        <span class="status pending" style="font-size:9px;padding:2px 6px">CHƯA TRẢ</span>
+                                        <span class="status pending" style="font-size:9px;padding:2px 6px">CHƯA THANH TOÁN</span>
                                     @endif
                                 </div>
 
@@ -1443,6 +1565,19 @@
                                         <button type="button" class="btn small lime" style="font-size:10px;padding:4px 8px" onclick="event.stopPropagation(); updateOrderStatus({{ $order->id }}, '{{ $nextAction['status'] }}')">
                                             {{ $nextAction['label'] }}
                                         </button>
+                                    </div>
+                                @elseif($col['id'] === 'shipping')
+                                    <div style="margin-top:10px;padding-top:6px;border-top:1px solid rgba(255,255,255,0.05);display:flex;justify-content:flex-end;gap:6px;flex-wrap:wrap">
+                                        @if($order->ghn_order_code)
+                                            <button type="button" class="btn small" style="font-size:10px;padding:4px 8px;background:var(--bg-panel-sub);border:1px solid var(--lime);color:var(--lime)" onclick="event.stopPropagation(); syncGhnOrder({{ $order->id }})">
+                                                Đồng bộ GHN ↻
+                                            </button>
+                                        @endif
+                                        @if(app()->environment(['local', 'testing']) && Route::has('admin.orders.manual-complete'))
+                                            <button type="button" class="btn small lime" style="font-size:10px;padding:4px 8px" onclick="event.stopPropagation(); manualCompleteOrder({{ $order->id }})">
+                                                Hoàn tất đơn ✓
+                                            </button>
+                                        @endif
                                     </div>
                                 @endif
                             </div>
@@ -1469,69 +1604,91 @@
                 <div class="muted">Quản lý kết nối các đối tác chuyển phát logistics và theo dõi các vận đơn đang lưu thông</div>
             </div>
             <div class="actions">
-                <span class="live-clock"><i class="live-dot"></i> LOGISTICS SYNC ONLINE</span>
+                @if($shippingSummary['connected'] ?? false)
+                    <span class="status completed">GHN: ĐÃ KẾT NỐI</span>
+                @else
+                    <span class="status muted">GHN: CHƯA KẾT NỐI</span>
+                @endif
             </div>
         </div>
 
         {{-- Carrier Integration Status Cards --}}
-        <div style="display:grid;grid-template-columns:repeat(3, 1fr);gap:16px;margin-bottom:24px">
-            {{-- GHN --}}
-            <div style="background:var(--bg-panel-sub);border:1px solid {{ ($shippingSummary['connected'] ?? false) ? 'var(--lime)' : 'var(--border-panel)' }};border-radius:8px;padding:18px;position:relative;overflow:hidden">
-                <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:12px">
-                    <div>
-                        <div style="font:700 16px/1 'Oswald',sans-serif;color:var(--text-main);margin-bottom:4px">GIAO HÀNG NHANH (GHN)</div>
-                        <div class="muted" style="font-size:11px">Tích hợp API v2 chuẩn thương mại điện tử</div>
-                    </div>
-                    @if($shippingSummary['connected'] ?? false)
-                        <span class="status completed" style="background:var(--success-bg);color:var(--lime);border:1px solid var(--success-border)">
-                            ✓ ĐÃ KẾT NỐI
-                        </span>
-                    @else
-                        <span class="status muted">CHƯA KẾT NỐI</span>
-                    @endif
-                </div>
-                <div style="font-size:12px;color:var(--text-sub);line-height:1.5;margin-bottom:12px">
-                    Đang kích hoạt đồng bộ tự động thời gian thực. Tự động tính cước theo trọng lượng/kích thước và sinh mã vận đơn khi đơn thanh toán.
-                </div>
-                <div style="display:flex;justify-content:space-between;align-items:center;padding-top:10px;border-top:1px solid var(--border-panel);font-size:11px">
-                    <span class="muted">Webhook: <b style="color:var(--lime)">Đang lắng nghe</b></span>
-                    <span class="mono" style="color:var(--text-main)">ShopID: {{ config('services.ghn.shop_id') }}</span>
-                </div>
-            </div>
+        <div style="display:grid;grid-template-columns:repeat(auto-fit, minmax(260px, 1fr));gap:16px;margin-bottom:24px">
+            @php
+                $providerInfo = [
+                    'ghn' => [
+                        'title' => 'GIAO HÀNG NHANH (GHN)',
+                        'sub' => 'Tích hợp API v2 chuẩn thương mại điện tử',
+                        'desc' => 'Tự động tính cước theo trọng lượng/kích thước và sinh mã vận đơn khi đơn thanh toán.',
+                        'meta_label' => 'ShopID',
+                        'meta_val' => config('services.ghn.shop_id') ?: '—',
+                    ],
+                    'spx' => [
+                        'title' => 'SPX EXPRESS',
+                        'sub' => 'Shopee Xpress B2C',
+                        'desc' => 'Dịch vụ vận chuyển đối tác SPX cho mạng lưới thương mại điện tử.',
+                        'meta_label' => 'Cấu hình API',
+                        'meta_val' => 'Chưa cấu hình API Key',
+                    ],
+                    'grab_express' => [
+                        'title' => 'GRABEXPRESS SIÊU TỐC',
+                        'sub' => 'Giao hỏa tốc 2 giờ nội thành',
+                        'desc' => 'Dịch vụ giao hàng tức thì bằng xe máy nội đô trong 2 giờ.',
+                        'meta_label' => 'Dịch vụ nội đô',
+                        'meta_val' => 'Chưa liên kết tài khoản',
+                    ],
+                    'grab_bike' => [
+                        'title' => 'GRABBIKE GIAO HỎA TỐC',
+                        'sub' => 'Giao chặng ngắn theo yêu cầu',
+                        'desc' => 'Vận chuyển linh hoạt tức thời cho các đơn hàng khẩn cấp nội thành.',
+                        'meta_label' => 'Dịch vụ chặng ngắn',
+                        'meta_val' => 'Chưa kết nối',
+                    ],
+                ];
+                $providersList = $shippingSummary['providers'] ?? [];
+            @endphp
 
-            {{-- SPX Express --}}
-            <div style="background:var(--bg-panel-sub);border:1px solid var(--border-panel);border-radius:8px;padding:18px">
-                <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:12px">
+            @forelse($providersList as $prov)
+                @php
+                    $pName = $prov['name'] ?? '';
+                    $pConnected = !empty($prov['connected']);
+                    $pInfo = $providerInfo[$pName] ?? [
+                        'title' => strtoupper(str_replace('_', ' ', $pName)),
+                        'sub' => 'Đối tác vận chuyển',
+                        'desc' => 'Dịch vụ kết nối đối tác giao nhận.',
+                        'meta_label' => 'Trạng thái',
+                        'meta_val' => $pConnected ? 'Hoạt động' : 'Chưa kết nối',
+                    ];
+                @endphp
+                <div style="background:var(--bg-panel-sub);border:1px solid {{ $pConnected ? 'var(--lime)' : 'var(--border-panel)' }};border-radius:8px;padding:18px;display:flex;flex-direction:column;justify-content:space-between">
                     <div>
-                        <div style="font:700 16px/1 'Oswald',sans-serif;color:var(--text-main);margin-bottom:4px">SPX EXPRESS</div>
-                        <div class="muted" style="font-size:11px">Shopee Xpress B2C</div>
+                        <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:12px;gap:8px">
+                            <div>
+                                <div style="font:700 16px/1 'Oswald',sans-serif;color:var(--text-main);margin-bottom:4px">{{ $pInfo['title'] }}</div>
+                                <div class="muted" style="font-size:11px">{{ $pInfo['sub'] }}</div>
+                            </div>
+                            @if($pConnected)
+                                <span class="status completed" style="background:var(--success-bg);color:var(--lime);border:1px solid var(--success-border);white-space:nowrap">
+                                    ✓ ĐÃ KẾT NỐI
+                                </span>
+                            @else
+                                <span class="status muted" style="white-space:nowrap">CHƯA KẾT NỐI</span>
+                            @endif
+                        </div>
+                        <div style="font-size:12px;color:var(--text-sub);line-height:1.5;margin-bottom:12px">
+                            {{ $pInfo['desc'] }}
+                        </div>
                     </div>
-                    <span class="status muted">CHƯA KẾT NỐI</span>
-                </div>
-                <div style="font-size:12px;color:var(--text-muted);line-height:1.5;margin-bottom:12px">
-                    Chưa thiết lập tích hợp API. Vui lòng cấu hình App Key & Secret trong phần cài đặt kết nối đối tác khi ký kết hợp đồng.
-                </div>
-                <div style="padding-top:10px;border-top:1px solid var(--border-panel);font-size:11px;color:var(--text-muted)">
-                    Chế độ: <i>Ngoại tuyến (Không kích hoạt giả lập)</i>
-                </div>
-            </div>
-
-            {{-- GrabExpress --}}
-            <div style="background:var(--bg-panel-sub);border:1px solid var(--border-panel);border-radius:8px;padding:18px">
-                <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:12px">
-                    <div>
-                        <div style="font:700 16px/1 'Oswald',sans-serif;color:var(--text-main);margin-bottom:4px">GRABEXPRESS SIÊU TỐC</div>
-                        <div class="muted" style="font-size:11px">Giao hỏa tốc 2 giờ nội thành</div>
+                    <div style="display:flex;justify-content:space-between;align-items:center;padding-top:10px;border-top:1px solid var(--border-panel);font-size:11px">
+                        <span class="muted">{{ $pInfo['meta_label'] }}:</span>
+                        <span class="mono" style="color:var(--text-main)">{{ $pInfo['meta_val'] }}</span>
                     </div>
-                    <span class="status muted">CHƯA KẾT NỐI</span>
                 </div>
-                <div style="font-size:12px;color:var(--text-muted);line-height:1.5;margin-bottom:12px">
-                    Chưa kích hoạt dịch vụ giao hỏa tốc 2 giờ nội thành. Tính năng đang trong danh sách chờ tích hợp đối tác vận chuyển nội đô.
+            @empty
+                <div style="grid-column:1/-1;text-align:center;padding:24px;border:1px dashed var(--border-panel);border-radius:8px;color:var(--text-muted)">
+                    Chưa có cấu hình nhà cung cấp vận chuyển nào trong hệ thống.
                 </div>
-                <div style="padding-top:10px;border-top:1px solid var(--border-panel);font-size:11px;color:var(--text-muted)">
-                    Chế độ: <i>Chưa liên kết tài khoản doanh nghiệp</i>
-                </div>
-            </div>
+            @endforelse
         </div>
 
         {{-- Active Waybills Tracking Table --}}
@@ -1779,9 +1936,9 @@
             </div>
             <div class="actions">
                 @if($footballApi->connected())
-                    <span class="status completed">KẾT NỐI: {{ $footballApi->name() }}</span>
+                    <span class="status completed">{{ $footballApi->name() }}</span>
                 @else
-                    <span class="status muted">CHƯA KẾT NỐI NHÀ CUNG CẤP NGOẠI VI</span>
+                    <span class="status muted">CHƯA KẾT NỐI</span>
                 @endif
             </div>
         </div>
@@ -1790,11 +1947,9 @@
         <div class="notice" style="background:#071c12;border-color:var(--border-sub);margin-bottom:20px">
             <span>ℹ</span>
             <div style="font-size:12px;color:var(--text-sub);line-height:1.5">
-                <b style="color:var(--lime)">HỆ THỐNG PHÂN LOẠI NGUỒN DỮ LIỆU:</b> Toàn bộ thông tin được dán nhãn minh bạch giữa
-                <b style="color:#38bdf8">[THỦ CÔNG]</b> (Khảo sát thực tế từ chuyên viên tư vấn giày tại cửa hàng Fieldcraft) và
-                <b style="color:var(--lime)">[DỮ LIỆU NHÀ CUNG CẤP]</b> (Dữ liệu chính thức từ hãng cung cấp kết nối API).
+                <b style="color:var(--lime)">NGUỒN DỮ LIỆU:</b> Toàn bộ xu hướng đang được thu thập <b style="color:#38bdf8">[THỦ CÔNG]</b> từ đội ngũ tư vấn giày chuyên môn tại cửa hàng Fieldcraft.
                 @if(!$footballApi->connected())
-                    <i>(Chưa kết nối nhà cung cấp dữ liệu bóng đá - Hệ thống cam kết không sử dụng dữ liệu cào giả lập bên ngoài).</i>
+                    <i>(Dịch vụ dữ liệu đối tác: <b style="color:var(--text-muted)">CHƯA KẾT NỐI</b> — hệ thống cam kết không sử dụng dữ liệu cào giả lập).</i>
                 @endif
             </div>
         </div>
@@ -1805,7 +1960,7 @@
                 <div style="background:var(--bg-panel-sub);border:1px solid var(--border-panel);border-radius:8px;padding:16px">
                     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
                         <span class="status {{ $trend->source === 'manual' ? 'pending' : 'completed' }}" style="font-size:9px;padding:2px 6px">
-                            {{ $trend->source === 'manual' ? '[THỦ CÔNG]' : '[DỮ LIỆU NHÀ CUNG CẤP]' }}
+                            {{ $trend->source === 'manual' ? 'THỦ CÔNG' : 'NGOẠI VI' }}
                         </span>
                         <span class="mono muted" style="font-size:10px">{{ $trend->created_at ? $trend->created_at->format('d/m/Y') : '' }}</span>
                     </div>
@@ -1834,7 +1989,7 @@
         </div>
 
         {{-- 2 Knowledge Guides: Stud Types & Foot Shapes --}}
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px">
+        <div style="display:grid;grid-template-columns:repeat(auto-fit, minmax(320px, 1fr));gap:20px">
             {{-- Stud Guide --}}
             <div style="background:var(--bg-panel-sub);border:1px solid var(--border-panel);border-radius:8px;padding:20px">
                 <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
@@ -2035,11 +2190,21 @@
                 <span class="toolbar-title">⏳ RADAR GIỎ HÀNG BỊ BỎ QUÊN (ABANDONED CART RADAR)</span>
                 <div class="muted">Hệ thống phát hiện giỏ hàng tồn đọng chưa thanh toán và hỗ trợ kích hoạt mã giải cứu cứu vãn doanh thu</div>
             </div>
-            <button type="button" class="btn lime" onclick="triggerBatchRescue()">⚡ KÍCH HOẠT MÃ CỨU GIỎ HÀNG LOẠT</button>
+            <div class="actions">
+                <span class="status muted" style="font-size:10px">KÍCH HOẠT TỪNG GIỎ HÀNG</span>
+            </div>
+        </div>
+
+        {{-- Process Explanation Notice --}}
+        <div class="notice" style="background:#071c12;border-color:var(--border-sub);margin-bottom:20px">
+            <span>ℹ</span>
+            <div style="font-size:12px;color:var(--text-sub);line-height:1.5">
+                <b style="color:var(--lime)">QUY TRÌNH CỨU GIỎ HÀNG:</b> Quản trị viên kiểm tra danh sách giỏ hàng treo quá hạn bên dưới và nhấn <b style="color:var(--lime)">GỬI VOUCHER CỨU GIỎ ⚡</b> trên từng dòng để kích hoạt mã giảm giá gửi tới khách hàng.
+            </div>
         </div>
 
         {{-- 4 Stat Cards --}}
-        <div style="display:grid;grid-template-columns:repeat(4, 1fr);gap:16px;margin-bottom:24px">
+        <div style="display:grid;grid-template-columns:repeat(auto-fit, minmax(220px, 1fr));gap:16px;margin-bottom:24px">
             <div style="background:var(--bg-panel-sub);border:1px solid var(--border-panel);border-radius:8px;padding:16px">
                 <div class="muted" style="font-size:11px;text-transform:uppercase">Giỏ hàng đang treo</div>
                 <div class="mono" style="font-size:26px;font-weight:700;color:var(--text-main);margin-top:4px">{{ $realAbandonedCarts->count() }} giỏ</div>
@@ -2287,11 +2452,11 @@
     <section class="panel" id="passport">
         <div class="toolbar">
             <div>
-                <span class="toolbar-title">🎫 HỘ CHIẾU GIÀY ĐÁ BÓNG ĐIỆN TỬ (FIELDCRAFT BOOT PASSPORT)</span>
+                <span class="toolbar-title">🎫 HỘ CHIẾU SẢN PHẨM FIELDCRAFT</span>
                 <div class="muted">Hệ thống định danh số, quản lý nguồn gốc sản phẩm và lịch sử bảo hành cho từng đôi giày</div>
             </div>
             <div class="actions">
-                <span class="status completed">ĐỊNH DANH SỐ & BẢO HÀNH CHÍNH HÃNG</span>
+                <span class="status completed">HỒ SƠ SỐ FIELDCRAFT</span>
             </div>
         </div>
 
@@ -2380,8 +2545,7 @@
             <div style="display:flex;justify-content:center;margin-bottom:24px">
                 <div class="passport-card-box" style="max-width:540px;width:100%">
                     <div class="passport-nfc-tag">
-                        <span>HỘ CHIẾU SỐ</span>
-                        <span style="font-size:10px">FIELDCRAFT PASSPORT</span>
+                        <span>HỘ CHIẾU SẢN PHẨM FIELDCRAFT</span>
                     </div>
 
                     <div class="passport-code-banner">
@@ -2414,18 +2578,12 @@
                         </div>
                     </div>
 
-                    <div style="background:rgba(0,0,0,0.4);border:1px solid var(--border-panel);border-radius:8px;padding:12px;margin-bottom:20px;display:flex;justify-content:space-between;align-items:center">
+                    <div style="background:rgba(0,0,0,0.4);border:1px solid var(--border-panel);border-radius:8px;padding:12px;margin-bottom:0;display:flex;justify-content:space-between;align-items:center">
                         <div>
                             <div class="muted" style="font-size:10px;text-transform:uppercase">Chủ sở hữu hiện tại</div>
                             <div style="font-weight:700;color:var(--text-main)" id="cardPassOwner">{{ $fOwner }}</div>
                         </div>
                         <span class="vip-tier-badge pro" id="cardPassTier">THÀNH VIÊN</span>
-                    </div>
-
-                    <div style="display:flex;gap:10px">
-                        <button class="btn lime" type="button" style="flex:1" onclick="alert('Đã đồng bộ thông tin Boot Passport sẵn sàng!')">
-                            ✓ XÁC THỰC THÀNH CÔNG
-                        </button>
                     </div>
                 </div>
             </div>
@@ -2469,12 +2627,39 @@
                         'trend.provider_changed' => 'Cập nhật nhà cung cấp xu hướng bóng đá',
                         'team.reorder_drafted' => 'Tạo đơn đặt lại cho đội bóng',
                     ];
-                    $actionTitle = $actionLabels[$log->action] ?? ucfirst(str_replace(['.', '_'], ' ', $log->action));
+                    $actionTitle = $actionLabels[$log->action] ?? ($log->action ? ucfirst(str_replace(['.', '_'], ' ', $log->action)) : 'Khác');
+                    $metaKeyLabels = [
+                        'from_status' => 'Trạng thái cũ',
+                        'to_status' => 'Trạng thái mới',
+                        'status' => 'Trạng thái',
+                        'coupon_id' => 'Mã ưu đãi',
+                        'role' => 'Vai trò',
+                        'source' => 'Nguồn',
+                        'reason' => 'Lý do',
+                        'note' => 'Ghi chú',
+                        'order_id' => 'Mã đơn hàng',
+                        'provider' => 'Đơn vị vận chuyển',
+                    ];
+                    $metaValLabels = [
+                        'pending' => 'Chờ xử lý',
+                        'confirmed' => 'Đã xác nhận',
+                        'packing' => 'Đang đóng gói',
+                        'preparing' => 'Đang chuẩn bị',
+                        'shipping' => 'Đang giao hàng',
+                        'completed' => 'Hoàn tất',
+                        'cancelled' => 'Đã hủy',
+                        'refund_required' => 'Cần hoàn tiền',
+                        'refund_pending' => 'Đang xử lý hoàn tiền',
+                        'refunded' => 'Đã hoàn tiền',
+                        'refund_failed' => 'Hoàn tiền thất bại',
+                    ];
                 @endphp
                 <article>
                     <div class="mono" style="font-size:11px;color:var(--lime);margin-bottom:4px">
-                        {{ $log->created_at->format('d/m/Y · H:i:s') }}
-                        <span class="muted">({{ $log->created_at->diffForHumans() }})</span>
+                        {{ $log->created_at ? $log->created_at->format('d/m/Y · H:i:s') : '—' }}
+                        @if($log->created_at)
+                            <span class="muted">({{ $log->created_at->diffForHumans() }})</span>
+                        @endif
                     </div>
                     <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
                         <span class="status completed" style="font-size:9px">
@@ -2489,7 +2674,10 @@
                         @if($log->metadata)
                             <span style="color:var(--text-sub)">
                                 @foreach($log->metadata as $k => $v)
-                                    <span class="muted">{{ $k }}:</span> <b>{{ is_array($v) ? json_encode($v, JSON_UNESCAPED_UNICODE) : $v }}</b>{{ !$loop->last ? ' · ' : '' }}
+                                    @php
+                                        $displayVal = is_array($v) ? json_encode($v, JSON_UNESCAPED_UNICODE) : ($metaValLabels[$v] ?? ($v ?: '—'));
+                                    @endphp
+                                    <span class="muted">{{ $metaKeyLabels[$k] ?? $k }}:</span> <b>{{ $displayVal }}</b>{{ !$loop->last ? ' · ' : '' }}
                                 @endforeach
                             </span>
                         @endif
@@ -2743,8 +2931,13 @@ document.addEventListener('DOMContentLoaded', () => {
                 const res = await fetch(`/admin/teams/${teamId}/draft-reorder`, {
                     headers: { 'Accept': 'application/json' }
                 });
-                const data = await res.json();
-                alert(`✓ Đã tạo yêu cầu đơn hàng nháp từ đội bóng "${teamName}" thành công! Trạng thái: ${data.status}, Số lượng thành viên: ${data.members?.length || 0}.`);
+                if (res.ok) {
+                    const data = await res.json();
+                    alert(`✓ Đã tạo yêu cầu đơn hàng nháp từ đội bóng "${teamName}" thành công! Trạng thái: ${data.status}, Số lượng thành viên: ${data.members?.length || 0}.`);
+                } else {
+                    const err = await res.json().catch(() => ({}));
+                    alert(err.message || 'Không thể tạo đơn hàng nháp từ đội bóng.');
+                }
             } catch (err) {
                 alert('Không thể kết nối máy chủ để tạo đơn nháp.');
             } finally {
@@ -2798,6 +2991,49 @@ async function updateOrderStatus(orderId, nextStatus) {
         }
     } catch (e) {
         alert('Không thể kết nối máy chủ để cập nhật đơn hàng.');
+    }
+}
+
+async function manualCompleteOrder(orderId) {
+    if (!confirm(`Xác nhận hoàn tất đơn hàng #${orderId}? (Chỉ khả dụng trong môi trường thử nghiệm)`)) return;
+    const csrfToken = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content');
+    try {
+        const res = await fetch(`/admin/orders/${orderId}/manual-complete`, {
+            method: 'POST',
+            headers: {
+                'X-CSRF-TOKEN': csrfToken || '',
+                'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8'
+            }
+        });
+        if (res.ok) {
+            alert(`✓ Đã xác nhận hoàn tất đơn hàng #${orderId} thành công!`);
+            window.location.reload();
+        } else {
+            alert('Không thể hoàn tất đơn hàng. Thao tác chỉ khả dụng trong môi trường thử nghiệm.');
+        }
+    } catch (e) {
+        alert('Không thể kết nối máy chủ để hoàn tất đơn hàng.');
+    }
+}
+
+async function syncGhnOrder(orderId) {
+    const csrfToken = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content');
+    try {
+        const res = await fetch(`/admin/orders/${orderId}/sync-ghn`, {
+            method: 'POST',
+            headers: {
+                'X-CSRF-TOKEN': csrfToken || '',
+                'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8'
+            }
+        });
+        if (res.ok) {
+            alert(`✓ Đã đồng bộ trạng thái GHN cho đơn hàng #${orderId}!`);
+            window.location.reload();
+        } else {
+            alert('Không thể đồng bộ trạng thái GHN lúc này.');
+        }
+    } catch (e) {
+        alert('Không thể kết nối máy chủ để đồng bộ GHN.');
     }
 }
 

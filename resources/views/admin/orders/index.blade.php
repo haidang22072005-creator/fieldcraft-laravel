@@ -20,8 +20,19 @@
         </select>
         <select name="payment_status">
             <option value="">Mọi thanh toán</option>
-            @foreach(['pending', 'paid', 'failed'] as $value)
-                <option value="{{ $value }}" @selected(($filters['payment_status'] ?? '') === $value)>{{ \App\Support\UiLabels::paymentStatus($value) }}</option>
+            @php
+                $orderPaymentOptions = [
+                    'pending' => 'Chờ thanh toán',
+                    'paid' => 'Đã thanh toán',
+                    'failed' => 'Thanh toán thất bại',
+                    'refund_required' => 'Cần hoàn tiền',
+                    'refund_pending' => 'Đang xử lý hoàn tiền',
+                    'refunded' => 'Đã hoàn tiền',
+                    'refund_failed' => 'Hoàn tiền thất bại',
+                ];
+            @endphp
+            @foreach($orderPaymentOptions as $value => $label)
+                <option value="{{ $value }}" @selected(($filters['payment_status'] ?? '') === $value)>{{ $label }}</option>
             @endforeach
         </select>
         <input type="date" name="date_from" value="{{ $filters['date_from'] ?? '' }}" title="Từ ngày">
@@ -59,7 +70,10 @@
                         </td>
                         <td class="muted">{{ $order->created_at?->format('d/m/Y H:i') }}</td>
                         <td>
-                            <span class="status {{ $order->payment_status }}">{{ \App\Support\UiLabels::paymentStatus($order->payment_status) }}</span>
+                            @php
+                                $pLabel = $orderPaymentOptions[$order->payment_status] ?? (\App\Support\UiLabels::paymentStatus($order->payment_status) ?: '—');
+                            @endphp
+                            <span class="status {{ $order->payment_status }}">{{ $pLabel }}</span>
                             <div class="muted" style="font-size:0.75rem;margin-top:2px">{{ \App\Support\UiLabels::paymentMethod($order->payment_method) }}</div>
                         </td>
                         <td>

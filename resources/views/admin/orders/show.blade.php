@@ -186,11 +186,20 @@
         </div>
         <div class="muted" style="font-size:11px;margin-top:6px">Cập nhật: {{ $order->updated_at?->format('d/m H:i') }}</div>
     </div>
+    @php
+        $refundLabels = [
+            'refund_required' => 'Cần hoàn tiền',
+            'refund_pending' => 'Đang xử lý hoàn tiền',
+            'refunded' => 'Đã hoàn tiền',
+            'refund_failed' => 'Hoàn tiền thất bại',
+        ];
+        $paymentStatusText = $refundLabels[$order->payment_status] ?? (\App\Support\UiLabels::paymentStatus($order->payment_status) ?: '—');
+    @endphp
     <div class="order-kpi">
         <div class="order-kpi-lbl">Thanh toán</div>
         <div>
             <span class="status {{ $order->payment_status }}">
-                {{ \App\Support\UiLabels::paymentStatus($order->payment_status) }}
+                {{ $paymentStatusText }}
             </span>
         </div>
         <div class="muted" style="font-size:11px;margin-top:6px">{{ \App\Support\UiLabels::paymentMethod($order->payment_method) }}</div>
@@ -471,7 +480,7 @@
                     <div style="display:flex;justify-content:space-between;align-items:center">
                         <span class="muted">Trạng thái:</span>
                         <span class="status {{ $order->payment_status }}">
-                            {{ \App\Support\UiLabels::paymentStatus($order->payment_status) }}
+                            {{ $paymentStatusText }}
                         </span>
                     </div>
                 </div>

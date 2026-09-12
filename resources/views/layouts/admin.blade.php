@@ -1162,7 +1162,7 @@
                         <span class="nav-badge">{{ $pendingOrdersCount }}</span>
                     @endif
                 </a>
-                <a class="nav-link {{ request()->routeIs('admin.dashboard') && request('tab') === 'kanban' ? 'active' : '' }}" href="{{ route('admin.dashboard', ['tab' => 'kanban']) }}#kanban">
+                <a class="nav-link {{ request()->routeIs('admin.orders.kanban') || (request()->routeIs('admin.dashboard') && request('tab') === 'kanban') ? 'active' : '' }}" href="{{ Route::has('admin.orders.kanban') ? route('admin.orders.kanban') : route('admin.dashboard', ['tab' => 'kanban']) }}#kanban">
                     <span class="nav-icon">▥</span>
                     <span>Kanban</span>
                 </a>
@@ -1170,9 +1170,9 @@
                     <span class="nav-icon">🚚</span>
                     <span>Vận chuyển</span>
                 </a>
-                <a class="nav-link {{ request()->routeIs('admin.dashboard') && in_array(request('tab'), ['finance', 'revenue']) ? 'active' : '' }}" href="{{ route('admin.dashboard', ['tab' => 'finance']) }}#finance">
+                <a class="nav-link {{ request()->routeIs('admin.dashboard') && in_array(request('tab'), ['revenue', 'finance']) ? 'active' : '' }}" href="{{ route('admin.dashboard', ['tab' => 'revenue']) }}#revenue">
                     <span class="nav-icon">💳</span>
-                    <span>Thanh toán</span>
+                    <span>Doanh thu & Tài chính</span>
                 </a>
             </div>
 
@@ -1495,12 +1495,14 @@
                     'Accept': 'application/json',
                     'Content-Type': 'application/json'
                 }
-            }).then(() => {
-                document.querySelectorAll('#notiList .noti-item').forEach(item => item.classList.remove('unread'));
-                const badge = document.getElementById('notiUnreadBadge');
-                if (badge) {
-                    badge.innerText = '0';
-                    badge.style.display = 'none';
+            }).then(res => {
+                if (res.ok) {
+                    document.querySelectorAll('#notiList .noti-item').forEach(item => item.classList.remove('unread'));
+                    const badge = document.getElementById('notiUnreadBadge');
+                    if (badge) {
+                        badge.innerText = '0';
+                        badge.style.display = 'none';
+                    }
                 }
             }).catch(err => console.error(err));
         }
@@ -1514,18 +1516,20 @@
                     'Accept': 'application/json',
                     'Content-Type': 'application/json'
                 }
-            }).then(() => {
-                const item = document.querySelector(`.noti-item[data-id="${id}"]`);
-                if (item && item.classList.contains('unread')) {
-                    item.classList.remove('unread');
-                    const badge = document.getElementById('notiUnreadBadge');
-                    if (badge) {
-                        let cnt = parseInt(badge.innerText, 10) - 1;
-                        if (cnt <= 0) {
-                            badge.innerText = '0';
-                            badge.style.display = 'none';
-                        } else {
-                            badge.innerText = cnt;
+            }).then(res => {
+                if (res.ok) {
+                    const item = document.querySelector(`.noti-item[data-id="${id}"]`);
+                    if (item && item.classList.contains('unread')) {
+                        item.classList.remove('unread');
+                        const badge = document.getElementById('notiUnreadBadge');
+                        if (badge) {
+                            let cnt = parseInt(badge.innerText, 10) - 1;
+                            if (cnt <= 0) {
+                                badge.innerText = '0';
+                                badge.style.display = 'none';
+                            } else {
+                                badge.innerText = cnt;
+                            }
                         }
                     }
                 }
@@ -1625,7 +1629,10 @@
             fetch('{{ route("admin.global-search") }}?q=' + encodeURIComponent(q), {
                 headers: { 'Accept': 'application/json' }
             })
-            .then(res => res.json())
+            .then(res => {
+                if (!res.ok) throw new Error('Search failed');
+                return res.json();
+            })
             .then(payload => {
                 const data = payload.data || {};
                 allSearchResults = [];
