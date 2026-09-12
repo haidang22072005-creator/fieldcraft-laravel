@@ -195,6 +195,7 @@ Route::middleware(['auth', 'role:super-admin,admin'])->prefix('admin')->name('ad
     Route::get('/activity', [ActivityController::class, 'index'])->name('activity.index');
     Route::prefix('notifications')->name('notifications.')->group(function () {
         Route::get('/', [NotificationController::class, 'index'])->name('index');
+        Route::post('/sync-low-stock', [NotificationController::class, 'syncLowStock'])->name('sync-low-stock');
         Route::patch('/{notification}/read', [NotificationController::class, 'read'])->name('read');
         Route::post('/read-all', [NotificationController::class, 'readAll'])->name('read-all');
     });

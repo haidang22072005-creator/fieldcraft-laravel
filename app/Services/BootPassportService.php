@@ -3,8 +3,8 @@
 namespace App\Services;
 
 use App\Models\BootPassport;
+use App\Models\Order;
 use App\Models\OrderItem;
-use App\Models\User;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 
@@ -19,7 +19,17 @@ class BootPassportService
     public function generateAll(): int
     {
         $count = 0;
-        User::query()->where('role', 'customer')->pluck('id')->each(function (int $userId) use (&$count): void { $count += count($this->generateForUser($userId)); });
+        OrderItem::query()->whereHas('order', fn ($q) => $q->where('status', 'completed'))->with(['order', 'variant.product', 'review', 'bootPassport'])->chunkById(200, function ($items) use (&$count): void {
+            foreach ($items as $item) if ($this->eligible($item)) { $this->create($item); $count++; }
+        });
+        return $count;
+    }
+
+    public function generateForOrder(Order $order): int
+    {
+        $count = 0;
+        $order->loadMissing(['items.variant.product', 'items.review']);
+        foreach ($order->items as $item) if ($this->generateForItem($item)) $count++;
         return $count;
     }
 

@@ -23,8 +23,13 @@ class AdminNotificationService
 
     public function syncImportantSizeLowStock(): void
     {
-        ProductVariant::query()->whereIn('size', (array) config('services.admin.important_sizes', ['40', '41']))->whereRaw('stock <= COALESCE(low_stock_threshold, ?)', [(int) config('services.admin.low_stock_threshold', 5)])->get()->each(function (ProductVariant $variant): void {
-            $this->notifyOnce('important_size_low_stock', 'Size quan trọng sắp hết hàng', $variant->sku, ['variant_id' => $variant->id]);
-        });
+        ProductVariant::query()->whereIn('size', (array) config('services.admin.important_sizes', ['40', '41']))->whereRaw('stock <= COALESCE(low_stock_threshold, ?)', [(int) config('services.admin.low_stock_threshold', 5)])->chunkById(200, fn ($variants) => $variants->each(fn (ProductVariant $variant) => $this->syncImportantSizeLowStockForVariant($variant)));
+    }
+
+    public function syncImportantSizeLowStockForVariant(ProductVariant $variant): void
+    {
+        if (in_array((string) $variant->size, (array) config('services.admin.important_sizes', ['40', '41']), true) && (int) $variant->stock <= (int) ($variant->low_stock_threshold ?? config('services.admin.low_stock_threshold', 5))) {
+            $this->notifyOnce('important_size_low_stock', 'Size quan trọng sắp hết hàng', $variant->sku, ['variant_id' => $variant->id], $variant);
+        }
     }
 }

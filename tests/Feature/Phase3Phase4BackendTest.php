@@ -72,6 +72,8 @@ class Phase3Phase4BackendTest extends TestCase
         $admin = User::factory()->create(['role' => 'admin']);
         $variant = $this->variant();
         $this->completedOrder($user, $variant);
+        $this->actingAs($user)->getJson(route('boot-passports.index'))->assertOk();
+        $this->assertDatabaseCount('boot_passports', 0);
         $this->assertCount(1, app(BootPassportService::class)->generateForUser($user->id));
         $this->assertCount(1, app(BootPassportService::class)->generateForUser($user->id));
 

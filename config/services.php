@@ -81,6 +81,7 @@ return [
     ],
 
     'loyalty' => [
+        'points_per_currency' => 10000,
         'thresholds' => [
             'ROOKIE' => 0,
             'PLAYER' => 5000000,
