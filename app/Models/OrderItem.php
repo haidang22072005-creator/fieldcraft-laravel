@@ -24,4 +24,5 @@ class OrderItem extends Model
     }
 
     public function customizationJobs(): HasMany { return $this->hasMany(CustomizationJob::class); }
+    public function bootPassport(): HasOne { return $this->hasOne(BootPassport::class); }
 }

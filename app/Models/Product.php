@@ -35,4 +35,6 @@ class Product extends Model
     {
         return $this->reviews()->where('status', 'approved')->latest();
     }
+
+    public function crossSellRules(): HasMany { return $this->hasMany(CrossSellRule::class, 'recommended_product_id'); }
 }

@@ -82,6 +82,7 @@ return back()->with('success', 'Đã cập nhật trạng thái đơn.');
             try {
                 $ghnOrders->createAndStoreWaybill($order->fresh());
             } catch (GHNException $exception) {
+                app(\App\Services\AdminNotificationService::class)->notify('ghn_failure', 'GHN không tạo được vận đơn', $order->number, ['reason' => $exception->getMessage()], $order);
                 throw ValidationException::withMessages(['status' => 'Không thể bàn giao đơn hàng cho GHN: '.$exception->getMessage()]);
             }
         }
@@ -93,8 +94,9 @@ return back()->with('success', 'Đã cập nhật trạng thái đơn.');
             $locked->update(['status' => $status]);
             $this->recordStatus($locked, $from, $status, 'admin', $request->user()->id);
         });
+        app(\App\Services\ActivityLogService::class)->record('order.status_changed', $order, ['status' => $status], $request->user()->id);
 
-        return back()->with('success', 'Đã cập nhật trạng thái đơn.');
+return back()->with('success', 'Đã cập nhật trạng thái đơn.');
     }
 
     public function syncGhn(Order $order, GHNOrderService $ghnOrders): RedirectResponse
@@ -118,6 +120,7 @@ return back()->with('success', 'Đã cập nhật trạng thái đơn.');
             } $locked->update($updates);
             if ($from) {
                 $this->recordStatus($locked, $from, 'completed', 'ghn', null);
+                app(\App\Services\AdminNotificationService::class)->notify('ghn_delivered', 'GHN đã giao đơn hàng', $locked->number, [], $locked);
             }
         });
 

@@ -22,6 +22,7 @@ class TeamOrderDraftController extends Controller
     {
         $payload = $request->validate($this->rules());
         $draft = $this->persistDraft($request, $teamProfile, $payload['items'] ?? null);
+        app(\App\Services\ActivityLogService::class)->record('team_draft.saved', $draft, [], $request->user()->id);
 
         return response()->json($this->draftResponse($draft), $draft->wasRecentlyCreated ? 201 : 200);
     }
@@ -48,6 +49,7 @@ class TeamOrderDraftController extends Controller
                 $draft->update(['status' => 'cancelled', 'active_key' => null]);
             }
         });
+        app(\App\Services\ActivityLogService::class)->record('team_draft.updated', $teamOrderDraft, ['status' => $payload['status'] ?? 'active'], $request->user()->id);
 
         return response()->json(['data' => TeamOrderDraft::with(['teamProfile', 'createdBy', 'items.teamMember', 'items.productVariant.product'])->findOrFail($teamOrderDraft->id)]);
     }

@@ -65,6 +65,7 @@ class CancelOrder
                 'payment_status' => $paymentStatus,
                 'shipping_status' => 'cancelled',
             ]);
+            app(\App\Services\ActivityLogService::class)->record('order.cancelled', $lockedOrder);
 
             return $ghnOrderCode;
         });

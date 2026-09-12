@@ -68,6 +68,7 @@ class CartManager
             $item->fill(['quantity' => $newQuantity]);
             if (! $item->exists) $item->selected_for_checkout = true;
             $item->save();
+            $cart->update(['last_activity_at' => now()]);
             return;
         }
 
@@ -84,10 +85,12 @@ class CartManager
         $this->assertQuantity($variant, $quantity);
 
         if ($request->user()) {
-            $this->userCart($request)->items()->updateOrCreate(
+            $cart = $this->userCart($request);
+            $cart->items()->updateOrCreate(
                 ['product_variant_id' => $variant->id],
                 ['quantity' => $quantity]
             );
+            $cart->update(['last_activity_at' => now()]);
             return;
         }
 
@@ -113,7 +116,9 @@ class CartManager
     {
         $this->ensureCanShop($request);
         if ($request->user()) {
-            $this->userCart($request)->items()->where('product_variant_id', $variant->id)->delete();
+            $cart = $this->userCart($request);
+            $cart->items()->where('product_variant_id', $variant->id)->delete();
+            $cart->update(['last_activity_at' => now()]);
             return;
         }
         $items = collect($request->session()->get('cart', []))->reject(
@@ -126,7 +131,7 @@ class CartManager
     {
         $this->ensureCanShop($request);
         $request->user()
-            ? $this->userCart($request)->items()->delete()
+            ? tap($this->userCart($request), fn (Cart $cart) => [$cart->items()->delete(), $cart->update(['last_activity_at' => now()])])
             : $request->session()->forget('cart');
     }
 
@@ -139,7 +144,9 @@ class CartManager
             throw ValidationException::withMessages(['stock' => 'Số lượng vượt quá tồn kho.']);
         }
         if ($request->user()) {
-            $this->userCart($request)->items()->where('product_variant_id', $variant->id)->update(['selected_for_checkout' => $selected]);
+            $cart = $this->userCart($request);
+            $cart->items()->where('product_variant_id', $variant->id)->update(['selected_for_checkout' => $selected]);
+            $cart->update(['last_activity_at' => now()]);
             return;
         }
         $items = collect($request->session()->get('cart', []))->keyBy('product_variant_id');
@@ -188,13 +195,14 @@ class CartManager
                 $item->selected_for_checkout = (bool) $item->selected_for_checkout || (bool) ($guestItem['selected'] ?? true);
                 $item->save();
             }
+            $cart->update(['last_activity_at' => now()]);
         });
         $request->session()->forget('cart');
     }
 
     private function userCart(Request $request): Cart
     {
-        return Cart::query()->firstOrCreate(['user_id' => $request->user()->id], ['session_key' => null]);
+        return Cart::query()->firstOrCreate(['user_id' => $request->user()->id], ['session_key' => null, 'last_activity_at' => now()]);
     }
 
     private function assertQuantity(ProductVariant $variant, int $quantity): void

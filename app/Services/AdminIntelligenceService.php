@@ -16,6 +16,7 @@ use Illuminate\Support\Facades\DB;
 
 class AdminIntelligenceService
 {
+    public function __construct(private LoyaltyService $loyalty, private CustomerSegmentService $segments) {}
     public function dashboard(): array
     {
         $now = now();
@@ -217,6 +218,8 @@ class AdminIntelligenceService
             'common_size' => $size,
             'common_payment_method' => $payment,
             'approved_review_average' => (int) ($approvedReviewAverage ?? 0),
+            'loyalty' => $this->loyalty->profile($user),
+            'segments' => $this->segments->for($user),
             'teams' => TeamProfile::with('members')->where('user_id', $user->id)->latest()->get(),
         ];
     }

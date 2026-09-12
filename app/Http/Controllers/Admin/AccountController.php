@@ -26,7 +26,8 @@ class AccountController extends Controller
     {
         $this->requireSuperAdmin($request);
         $data = $request->validate(['name' => ['required', 'string', 'max:255'], 'email' => ['required', 'email', 'max:255', 'unique:users,email'], 'password' => ['required', 'string', 'min:8', 'confirmed']]);
-        User::create(['name' => $data['name'], 'email' => $data['email'], 'password' => Hash::make($data['password']), 'role' => 'admin']);
+        $created = User::create(['name' => $data['name'], 'email' => $data['email'], 'password' => Hash::make($data['password']), 'role' => 'admin']);
+        app(\App\Services\ActivityLogService::class)->record('account.created', $created, ['role' => 'admin'], $request->user()->id);
         return back()->with('success', 'Đã tạo tài khoản quản trị viên.');
     }
 
@@ -37,6 +38,7 @@ class AccountController extends Controller
         if ($user->is($request->user()) && $role !== 'super-admin') throw ValidationException::withMessages(['role' => 'Không thể tự hạ quyền tài khoản đang đăng nhập.']);
         if ($user->role === 'super-admin' && $role !== 'super-admin' && User::where('role', 'super-admin')->count() <= 1) throw ValidationException::withMessages(['role' => 'Không thể hạ quyền super-admin cuối cùng.']);
         DB::transaction(function () use ($user, $role): void { User::lockForUpdate()->findOrFail($user->id)->update(['role' => $role]); });
+        app(\App\Services\ActivityLogService::class)->record('account.role_changed', $user, ['role' => $role], $request->user()->id);
         return back()->with('success', 'Đã cập nhật quyền tài khoản.');
     }
 

@@ -3,8 +3,8 @@
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
-use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 class Cart extends Model
 {
@@ -19,4 +19,7 @@ class Cart extends Model
     {
         return $this->hasMany(CartItem::class);
     }
+
+    public function contactedBy(): BelongsTo { return $this->belongsTo(User::class, 'contacted_by'); }
+    public function contactCoupon(): BelongsTo { return $this->belongsTo(Coupon::class, 'contact_coupon_id'); }
 }
