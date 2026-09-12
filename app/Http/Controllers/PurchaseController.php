@@ -147,6 +147,7 @@ class PurchaseController extends Controller
     {
         $order->load([
             'items.variant.product.images',
+            'items.review',
             'payments',
             'coupon',
             'address',
@@ -186,7 +187,15 @@ class PurchaseController extends Controller
                     'id' => $item->variant->id,
                     'stock' => (int) $item->variant->stock,
                     'price' => (int) $item->variant->price,
-                    'images' => $item->variant->product?->images->pluck('path')->values()->all() ?? [],
+                    'images' => $item->variant->product?->images->map(fn ($image) => [
+                        'path' => $image->path,
+                        'color' => $image->color,
+                    ])->values()->all() ?? [],
+                ] : null,
+                'review' => $item->review ? [
+                    'rating' => (int) $item->review->rating,
+                    'comment' => $item->review->comment,
+                    'status' => $item->review->status,
                 ] : null,
             ])->values()->all(),
             'subtotal' => (int) $order->subtotal,

@@ -1073,6 +1073,25 @@
         .modal-img:hover img {
             transform: scale(1.4);
         }
+        .gallery-thumbs {
+            display: flex;
+            gap: 7px;
+            margin-top: 8px;
+            overflow-x: auto;
+        }
+        .gallery-thumb {
+            width: 54px;
+            height: 44px;
+            flex: 0 0 auto;
+            padding: 0;
+            border: 1px solid var(--border-sub);
+            background: var(--bg-panel-sub);
+            border-radius: 5px;
+            overflow: hidden;
+            cursor: pointer;
+        }
+        .gallery-thumb.active { border-color: var(--neon-green); }
+        .gallery-thumb img { width: 100%; height: 100%; object-fit: cover; }
         .modal-info h2 {
             margin: 6px 0 10px;
             font: 700 32px/1.05 'Oswald', sans-serif;
@@ -1572,8 +1591,11 @@
     <div class="product-modal" id="productModal">
         <button class="close" id="closeModal" style="position:absolute;top:16px;right:16px;z-index:5" aria-label="Đóng">×</button>
         <div class="modal-grid">
-            <div class="modal-img">
-                <img id="modalImage" src="" alt="Sản phẩm">
+            <div class="modal-media">
+                <div class="modal-img">
+                    <img id="modalImage" src="" alt="Sản phẩm">
+                </div>
+                <div class="gallery-thumbs" id="galleryThumbs"></div>
             </div>
             <div class="modal-info">
                 <span class="eyebrow" id="modalCategory"></span>
@@ -1607,6 +1629,8 @@
                     <button id="modalAdd" class="btn btn-outline">THÊM VÀO GIỎ</button>
                     <button id="buyNow" class="btn btn-primary">MUA NGAY</button>
                 </div>
+                <div id="reviewSummary" style="margin-top:18px;color:var(--text-sub);font-size:12px"></div>
+                <div id="reviewList" style="margin-top:8px;display:grid;gap:8px"></div>
             </div>
         </div>
     </div>
@@ -1737,14 +1761,52 @@
             }
             selectedColor = selectedVariant.color;
             selectedSize = selectedVariant.size;
-            document.getElementById('modalImage').src = selected.image;
-            document.getElementById('modalImage').alt = selected.name;
+            renderGallery();
+            renderReviews();
             document.getElementById('modalCategory').textContent = (selected.category || '') + ' / ' + (selected.brand || '').toUpperCase();
             document.getElementById('modalName').textContent = selected.name;
             document.getElementById('productQuantity').value = 1;
             renderVariantChoices();
             document.getElementById('modalBackdrop').classList.add('show');
             document.getElementById('productModal').classList.add('show');
+        }
+
+        function renderGallery() {
+            const allImages = selected?.images || [];
+            const colorImages = allImages.filter(image => image.color === selectedColor);
+            const genericImages = allImages.filter(image => !image.color);
+            const images = colorImages.length ? colorImages : (genericImages.length ? genericImages : [{url: selected?.image, color: null}]);
+            const main = document.getElementById('modalImage');
+            main.src = images[0]?.url || '';
+            main.alt = selected?.name || 'Sản phẩm';
+            document.getElementById('galleryThumbs').innerHTML = images.map((image, index) =>
+                `<button type="button" class="gallery-thumb ${index === 0 ? 'active' : ''}" data-gallery-index="${index}"><img src="${html(image.url)}" alt=""></button>`
+            ).join('');
+            document.getElementById('galleryThumbs').onclick = event => {
+                const button = event.target.closest('[data-gallery-index]');
+                if (!button) return;
+                const image = images[Number(button.dataset.galleryIndex)];
+                if (!image) return;
+                main.src = image.url;
+                document.querySelectorAll('.gallery-thumb').forEach(item => item.classList.remove('active'));
+                button.classList.add('active');
+            };
+        }
+
+        function renderReviews() {
+            const reviews = selected?.reviews || [];
+            const average = selected?.ratingAverage;
+            document.getElementById('reviewSummary').textContent = reviews.length
+                ? `★ ${average} / 5 · ${reviews.length} đánh giá đã duyệt`
+                : 'Chưa có đánh giá đã được duyệt.';
+            document.getElementById('reviewList').innerHTML = reviews.map(review => `
+                <div style="border-top:1px solid var(--border-sub);padding-top:8px;font-size:11px;color:var(--text-sub)">
+                    <strong style="color:var(--text-main)">${html(review.reviewer)}</strong> · <span style="color:var(--neon-green)">${'★'.repeat(Number(review.rating))}</span>
+                    ${review.verifiedPurchase ? '<span> · Đã mua hàng</span>' : ''}
+                    <div>${html(review.comment || '')}</div>
+                    ${review.officialReply ? `<div style="margin-top:5px;color:var(--neon-green)"><strong>${html(review.officialReply.label)}:</strong> ${html(review.officialReply.comment)}</div>` : ''}
+                </div>
+            `).join('');
         }
 
         function renderVariantChoices() {
@@ -1804,6 +1866,7 @@
             if (!b) return;
             selectedColor = b.dataset.color;
             selectedSize = '';
+            renderGallery();
             renderVariantChoices();
         });
 

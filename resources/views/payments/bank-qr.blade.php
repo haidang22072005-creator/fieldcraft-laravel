@@ -503,7 +503,7 @@
                 </div>
                 <div class="info-row">
                     <span class="info-label">Trạng thái</span>
-                    <span class="status-pill failed">{{ $status === 'cancelled' ? 'Đã hủy' : 'Thất bại' }}</span>
+                    <span class="status-pill failed">{{ \App\Support\UiLabels::paymentStatus($status) }}</span>
                 </div>
             </div>
 

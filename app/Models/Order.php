@@ -13,13 +13,15 @@ class Order extends Model
 
     protected function casts(): array
     {
-        return ['expedite_requested_at' => 'datetime'];
+        return ['expedite_requested_at' => 'datetime', 'completed_at' => 'datetime'];
     }
 
     public function items(): HasMany
     {
         return $this->hasMany(OrderItem::class);
     }
+
+    public function user(): BelongsTo { return $this->belongsTo(User::class); }
 
     public function couponUsage(): HasOne
     {
@@ -40,4 +42,13 @@ class Order extends Model
     {
         return $this->hasMany(Payment::class);
     }
+
+    public function reviews(): HasMany
+    {
+        return $this->hasMany(Review::class);
+    }
+
+    public function completedBy(): BelongsTo { return $this->belongsTo(User::class, 'completed_by'); }
+
+    public function statusHistories(): HasMany { return $this->hasMany(OrderStatusHistory::class); }
 }

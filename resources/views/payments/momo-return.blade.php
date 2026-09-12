@@ -265,7 +265,7 @@
                 <p class="status-sub">Bạn đã hủy giao dịch trên cổng thanh toán MoMo. Đơn hàng chưa được thanh toán.</p>
             @else
                 <div class="status-icon pending" aria-hidden="true">●</div>
-                <h1>Trạng thái: {{ $status }}</h1>
+                <h1>Trạng thái: {{ \App\Support\UiLabels::paymentStatus($status) }}</h1>
                 <p class="status-sub">Kết quả cuối cùng được xác nhận an toàn qua hệ thống MoMo.</p>
             @endif
 

@@ -573,27 +573,27 @@
             // Normalized badge info
             if ($orderStatus === 'cancelled') {
                 $statusBadgeClass = 'badge-danger';
-                $statusBadgeText = 'Đã hủy';
+                $statusBadgeText = \App\Support\UiLabels::orderStatus($orderStatus);
                 $stepProgress = 0;
             } elseif ($orderStatus === 'completed' || $shipStatus === 'delivered') {
                 $statusBadgeClass = 'badge-success';
-                $statusBadgeText = 'Hoàn thành';
+                $statusBadgeText = \App\Support\UiLabels::orderStatus('completed');
                 $stepProgress = 3;
             } elseif (in_array($shipStatus, ['delivering', 'transporting', 'picking', 'ready_to_pick']) || $orderStatus === 'shipping') {
                 $statusBadgeClass = 'badge-info';
-                $statusBadgeText = 'Đang giao hàng';
+                $statusBadgeText = \App\Support\UiLabels::orderStatus('shipping');
                 $stepProgress = 2;
             } elseif ($orderStatus === 'pending_payment' || ($order->payment_method !== 'cod' && $payStatus === 'pending')) {
                 $statusBadgeClass = 'badge-warning';
-                $statusBadgeText = 'Chờ thanh toán';
+                $statusBadgeText = \App\Support\UiLabels::orderStatus('pending_payment');
                 $stepProgress = 0;
             } elseif ($payStatus === 'paid' || $orderStatus === 'confirmed' || $orderStatus === 'preparing' || $orderStatus === 'packing') {
                 $statusBadgeClass = 'badge-success';
-                $statusBadgeText = 'Đã xác nhận / Chờ giao';
+                $statusBadgeText = \App\Support\UiLabels::orderStatus($orderStatus);
                 $stepProgress = 1;
             } else {
                 $statusBadgeClass = 'badge-muted';
-                $statusBadgeText = 'Đã tiếp nhận';
+                $statusBadgeText = \App\Support\UiLabels::orderStatus($orderStatus);
                 $stepProgress = 0;
             }
 
@@ -640,27 +640,27 @@
                         <span class="badge {{ $statusBadgeClass }}">{{ $statusBadgeText }}</span>
 
                         @if($order->payment_method === 'cod')
-                            <span class="badge badge-muted">COD</span>
+                            <span class="badge badge-muted">{{ \App\Support\UiLabels::paymentMethod('cod') }}</span>
                             @if($payStatus === 'paid')
-                                <span class="badge badge-success">Đã thu tiền</span>
+                                <span class="badge badge-success">{{ \App\Support\UiLabels::paymentStatus('paid') }}</span>
                             @else
-                                <span class="badge badge-muted">Thu tiền khi nhận</span>
+                                <span class="badge badge-muted">{{ \App\Support\UiLabels::paymentMethod('cod') }}</span>
                             @endif
                         @elseif($order->payment_method === 'momo')
-                            <span class="badge" style="background:#a50064;color:#fff;border:1px solid #c2187b">MoMo</span>
+                            <span class="badge" style="background:#a50064;color:#fff;border:1px solid #c2187b">{{ \App\Support\UiLabels::paymentMethod('momo') }}</span>
                             @if($payStatus === 'paid')
-                                <span class="badge badge-success">Đã thanh toán</span>
+                                <span class="badge badge-success">{{ \App\Support\UiLabels::paymentStatus('paid') }}</span>
                             @elseif($orderStatus === 'cancelled')
                                 <span class="badge badge-danger">Giao dịch hủy</span>
                             @else
-                                <span class="badge badge-warning">Chờ thanh toán</span>
+                                <span class="badge badge-warning">{{ \App\Support\UiLabels::paymentStatus('pending_payment') }}</span>
                             @endif
                         @elseif($order->payment_method === 'bank_qr' || $order->payment_method === 'payos')
                             <span class="badge" style="background:#003366;color:#70d6ff;border:1px solid #0054a6">BANK QR</span>
                             @if($payStatus === 'paid')
-                                <span class="badge badge-success">Đã thanh toán</span>
+                                <span class="badge badge-success">{{ \App\Support\UiLabels::paymentStatus('paid') }}</span>
                             @else
-                                <span class="badge badge-warning">Chờ thanh toán</span>
+                                <span class="badge badge-warning">{{ \App\Support\UiLabels::paymentStatus('pending_payment') }}</span>
                             @endif
                         @endif
 

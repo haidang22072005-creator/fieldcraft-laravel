@@ -15,12 +15,15 @@ class StorefrontController extends Controller
     private function catalogue(): array
     {
         $databaseProducts = Schema::hasTable('products')
-            ? Product::query()->with(['images', 'variants'])->where('is_active', true)->get()
+            ? Product::query()->with(['images', 'variants', 'approvedReviews.user', 'approvedReviews.adminRepliedBy'])->where('is_active', true)->get()
             : collect();
         if ($databaseProducts->isNotEmpty()) {
             return $databaseProducts->map(function (Product $product) {
                 $variant = $product->variants->first();
-                $path = $product->images->first()?->path;
+                $baseImage = $product->images->first(fn ($image) => ! str_starts_with((string) $image->path, 'http'))
+                    ?? $product->images->firstWhere('color', null)
+                    ?? $product->images->first();
+                $approvedReviews = $product->approvedReviews;
                 return [
                     'id' => $product->id,
                     'variantId' => $variant?->id,
@@ -31,7 +34,11 @@ class StorefrontController extends Controller
                     'oldPrice' => null,
                     'badge' => 'Chính hãng',
                     'color' => $variant?->color ?? 'Tiêu chuẩn',
-                    'image' => str_starts_with((string) $path, 'http') ? $path : asset('storage/'.$path),
+                    'image' => $this->imageUrl($baseImage?->path),
+                    'images' => $product->images->map(fn ($image) => [
+                        'url' => $this->imageUrl($image->path),
+                        'color' => $image->color,
+                    ])->values()->all(),
                     'variants' => $product->variants->map(fn ($item) => [
                         'id' => $item->id,
                         'sku' => $item->sku,
@@ -39,6 +46,18 @@ class StorefrontController extends Controller
                         'size' => $item->size,
                         'price' => $item->price,
                         'stock' => $item->stock,
+                    ])->values()->all(),
+                    'ratingAverage' => $approvedReviews->isEmpty() ? null : round((float) $approvedReviews->avg('rating'), 1),
+                    'reviewCount' => $approvedReviews->count(),
+                    'reviews' => $approvedReviews->map(fn ($review) => [
+                        'rating' => (int) $review->rating,
+                        'comment' => $review->comment,
+                        'reviewer' => $review->user?->name ?? 'Khách hàng',
+                        'verifiedPurchase' => true,
+                        'officialReply' => $review->admin_reply ? [
+                            'label' => 'FIELDCRAFT',
+                            'comment' => $review->admin_reply,
+                        ] : null,
                     ])->values()->all(),
                 ];
             })->all();
@@ -96,5 +115,20 @@ class StorefrontController extends Controller
         }
 
         return response()->json(['data' => $products->values()]);
+    }
+
+    private function imageUrl(?string $path): string
+    {
+        if (blank($path)) {
+            return '';
+        }
+
+        if (str_starts_with($path, 'http')) {
+            return $path;
+        }
+
+        return str_starts_with($path, 'images/')
+            ? asset($path)
+            : asset('storage/'.ltrim($path, '/'));
     }
 }

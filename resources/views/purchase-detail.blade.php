@@ -648,27 +648,27 @@
         // Status badge setup
         if ($orderStatus === 'cancelled') {
             $badgeClass = 'badge-danger';
-            $badgeLabel = 'Đã hủy';
+            $badgeLabel = \App\Support\UiLabels::orderStatus($orderStatus);
             $stepProgress = 0;
         } elseif ($orderStatus === 'completed' || $shipStatus === 'delivered') {
             $badgeClass = 'badge-success';
-            $badgeLabel = 'Hoàn thành';
+            $badgeLabel = \App\Support\UiLabels::orderStatus('completed');
             $stepProgress = 3;
         } elseif (in_array($shipStatus, ['delivering', 'transporting', 'picking', 'ready_to_pick']) || $orderStatus === 'shipping') {
             $badgeClass = 'badge-info';
-            $badgeLabel = 'Đang giao hàng';
+            $badgeLabel = \App\Support\UiLabels::orderStatus('shipping');
             $stepProgress = 2;
         } elseif ($orderStatus === 'pending_payment' || ($order->payment_method !== 'cod' && $payStatus === 'pending')) {
             $badgeClass = 'badge-warning';
-            $badgeLabel = 'Chờ thanh toán';
+            $badgeLabel = \App\Support\UiLabels::paymentStatus('pending_payment');
             $stepProgress = 0;
         } elseif ($payStatus === 'paid' || in_array($orderStatus, ['confirmed', 'preparing', 'packing'])) {
             $badgeClass = 'badge-success';
-            $badgeLabel = 'Đã xác nhận / Đóng gói';
+            $badgeLabel = \App\Support\UiLabels::orderStatus($orderStatus);
             $stepProgress = 1;
         } else {
             $badgeClass = 'badge-muted';
-            $badgeLabel = 'Đã tiếp nhận';
+            $badgeLabel = \App\Support\UiLabels::orderStatus($orderStatus);
             $stepProgress = 0;
         }
 
@@ -710,19 +710,19 @@
             <span class="badge {{ $badgeClass }}">{{ $badgeLabel }}</span>
 
             @if($order->payment_method === 'cod')
-                <span class="badge badge-muted">COD (Thu tiền khi nhận)</span>
+                <span class="badge badge-muted">{{ \App\Support\UiLabels::paymentMethod('cod') }}</span>
             @elseif($order->payment_method === 'momo')
-                <span class="badge" style="background:#a50064;color:#fff;border:1px solid #c2187b">MoMo</span>
+                <span class="badge" style="background:#a50064;color:#fff;border:1px solid #c2187b">{{ \App\Support\UiLabels::paymentMethod('momo') }}</span>
             @elseif($order->payment_method === 'bank_qr' || $order->payment_method === 'payos')
                 <span class="badge" style="background:#003366;color:#70d6ff;border:1px solid #0054a6">VietQR</span>
             @endif
 
             @if($payStatus === 'paid')
-                <span class="badge badge-success">Đã thanh toán</span>
+                <span class="badge badge-success">{{ \App\Support\UiLabels::paymentStatus('paid') }}</span>
             @elseif($orderStatus === 'cancelled')
                 <span class="badge badge-danger">Giao dịch hủy</span>
             @else
-                <span class="badge badge-warning">Chưa thanh toán</span>
+                <span class="badge badge-warning">{{ \App\Support\UiLabels::paymentStatus($payStatus) }}</span>
             @endif
 
             @if($order->ghn_order_code)
@@ -802,7 +802,7 @@
                                     <div class="event-content">
                                         <div class="event-title">Bàn giao Giao Hàng Nhanh (GHN)</div>
                                         <div class="event-sub">
-                                            Mã vận đơn: <strong>{{ $order->ghn_order_code }}</strong> · Trạng thái: <strong>{{ $tracking['status'] ?? 'Đang luân chuyển' }}</strong>
+                                            Mã vận đơn: <strong>{{ $order->ghn_order_code }}</strong> · Trạng thái: <strong>{{ \App\Support\UiLabels::ghnStatus($tracking['status'] ?? $order->shipping_status) }}</strong>
                                         </div>
                                     </div>
                                 </div>
@@ -829,11 +829,12 @@
                 </div>
                 <div class="panel-body">
                     @foreach($order->items as $item)
-                        @php($image = $item->variant?->product?->images->first()?->path)
+                        @php($imageRecord = $item->variant?->product?->images->firstWhere('color', $item->color) ?? $item->variant?->product?->images->firstWhere('color', null) ?? $item->variant?->product?->images->first())
+                        @php($image = $imageRecord?->path)
                         <div class="item-row">
                             <div class="item-thumb">
                                 @if($image)
-                                    <img src="{{ asset($image) }}" alt="{{ $item->product_name }}">
+                                    <img src="{{ str_starts_with($image, 'http') || str_starts_with($image, 'images/') ? asset($image) : asset('storage/'.ltrim($image, '/')) }}" alt="{{ $item->product_name }}">
                                 @else
                                     <span class="item-thumb-placeholder">FC</span>
                                 @endif
@@ -855,6 +856,21 @@
                                 <div class="item-line-total">{{ number_format($item->unit_price * $item->quantity, 0, ',', '.') }}₫</div>
                             </div>
                         </div>
+                        @if($orderStatus === 'completed')
+                            @if($item->review)
+                                <div style="margin:0 0 14px 68px;color:var(--text-muted);font-size:12px">
+                                    Đánh giá: {{ str_repeat('★', (int) $item->review->rating) }} · {{ $item->review->status === 'approved' ? 'Đã hiển thị' : 'Đang chờ duyệt' }}
+                                </div>
+                            @else
+                                <form method="POST" action="{{ route('purchases.review.store', [$order, $item]) }}" style="margin:0 0 14px 68px;display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+                                    @csrf
+                                    <strong style="font-size:11px">ĐÁNH GIÁ SẢN PHẨM</strong>
+                                    <select name="rating" required aria-label="Số sao" style="padding:6px"><option value="5">5 ★</option><option value="4">4 ★</option><option value="3">3 ★</option><option value="2">2 ★</option><option value="1">1 ★</option></select>
+                                    <input name="comment" maxlength="2000" placeholder="Chia sẻ trải nghiệm (không bắt buộc)" style="min-width:220px;padding:7px">
+                                    <button type="submit" class="btn-action btn-secondary">GỬI</button>
+                                </form>
+                            @endif
+                        @endif
                     @endforeach
                 </div>
             </section>
@@ -909,7 +925,7 @@
                         <div class="info-row">
                             <span class="info-label">Trạng thái giao hàng</span>
                             <span class="info-value">
-                                <span class="badge {{ $badgeClass }}">{{ $tracking['status'] ?? ($order->shipping_status ?: 'Đang xử lý') }}</span>
+                                <span class="badge {{ $badgeClass }}">{{ \App\Support\UiLabels::ghnStatus($tracking['status'] ?? $order->shipping_status) }}</span>
                             </span>
                         </div>
                     </div>

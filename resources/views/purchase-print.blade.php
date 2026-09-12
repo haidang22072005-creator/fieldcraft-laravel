@@ -281,9 +281,9 @@
                 @if($order->ghn_order_code)
                     <p>Mã vận đơn: <strong style="font-family:'DM Mono',monospace">{{ $order->ghn_order_code }}</strong></p>
                 @endif
-                <p>Phương thức: <strong>{{ strtoupper($order->payment_method) }}</strong></p>
-                <p>Trạng thái thanh toán: <strong>{{ $order->payment_status === 'paid' ? 'ĐÃ THANH TOÁN' : 'CHƯA THANH TOÁN' }}</strong></p>
-                <p>Trạng thái đơn: <strong>{{ strtoupper($order->status) }}</strong></p>
+                <p>Phương thức: <strong>{{ \App\Support\UiLabels::paymentMethod($order->payment_method) }}</strong></p>
+                <p>Trạng thái thanh toán: <strong>{{ \App\Support\UiLabels::paymentStatus($order->payment_status) }}</strong></p>
+                <p>Trạng thái đơn: <strong>{{ \App\Support\UiLabels::orderStatus($order->status) }}</strong></p>
             </div>
         </div>
 

@@ -14,6 +14,9 @@ use App\Http\Controllers\MoMoSandboxController;
 use App\Http\Controllers\StorefrontController;
 use App\Http\Controllers\SettingsController;
 use App\Http\Controllers\PurchaseController;
+use App\Http\Controllers\ReviewController;
+use App\Http\Controllers\Admin\ReviewController as AdminReviewController;
+use App\Http\Controllers\Admin\AccountController;
 use Illuminate\Foundation\Auth\EmailVerificationRequest;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
@@ -83,6 +86,7 @@ Route::middleware(['auth', 'verified'])->prefix('purchases')->name('purchases.')
     Route::post('/{order}/reorder', [PurchaseController::class, 'reorder'])->name('reorder');
     Route::post('/{order}/cancel', [PurchaseController::class, 'cancel'])->name('cancel');
     Route::post('/{order}/expedite', [PurchaseController::class, 'expedite'])->middleware('throttle:6,1440')->name('expedite');
+    Route::post('/{order}/items/{orderItem}/review', [ReviewController::class, 'store'])->middleware('throttle:10,1')->name('review.store');
     Route::get('/{order}', [PurchaseController::class, 'show'])->name('show');
 });
 
@@ -94,5 +98,17 @@ Route::middleware(['auth', 'role:super-admin,admin'])->prefix('admin')->name('ad
     Route::get('/customers/{user}', [CustomerController::class, 'show'])->name('customers.show');
     Route::post('/customers/{user}/reset-password', [CustomerController::class, 'resetPassword'])->name('customers.reset-password');
     Route::get('/orders', [OrderController::class, 'index'])->name('orders.index');
+    Route::get('/orders/{order}', [OrderController::class, 'show'])->name('orders.show');
     Route::patch('/orders/{order}/status', [OrderController::class, 'updateStatus'])->name('orders.status');
+    Route::post('/orders/{order}/sync-ghn', [OrderController::class, 'syncGhn'])->middleware('throttle:30,1')->name('orders.sync-ghn');
+    Route::get('/reviews', [AdminReviewController::class, 'index'])->name('reviews.index');
+    Route::patch('/reviews/{review}/status', [AdminReviewController::class, 'status'])->name('reviews.status');
+    Route::post('/reviews/{review}/reply', [AdminReviewController::class, 'reply'])->name('reviews.reply');
+    Route::delete('/reviews/{review}', [AdminReviewController::class, 'destroy'])->name('reviews.destroy');
+    Route::get('/accounts', [AccountController::class, 'index'])->name('accounts.index');
+    Route::post('/accounts/staff', [AccountController::class, 'store'])->middleware('role:super-admin')->name('accounts.store');
+    Route::patch('/accounts/{user}/role', [AccountController::class, 'updateRole'])->middleware('role:super-admin')->name('accounts.role');
+    if (app()->environment(['local', 'testing'])) {
+        Route::post('/orders/{order}/manual-complete', [OrderController::class, 'manualComplete'])->name('orders.manual-complete');
+    }
 });
