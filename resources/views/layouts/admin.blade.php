@@ -1137,6 +1137,9 @@
             $pendingOrdersCount = \App\Models\Order::where('status', 'pending')->count();
             $pendingReviewsCount = \App\Models\Review::where('status', 'pending')->count();
             $lowStockCount = \App\Models\ProductVariant::where('stock', '<=', 5)->count();
+            $currentAdminId = auth()->id();
+            $unreadNotificationsCount = $currentAdminId ? \App\Models\AdminNotification::where('user_id', $currentAdminId)->whereNull('read_at')->count() : 0;
+            $realNotifications = $currentAdminId ? \App\Models\AdminNotification::where('user_id', $currentAdminId)->latest()->take(15)->get() : collect();
         @endphp
 
         <nav class="side-nav">
@@ -1305,7 +1308,7 @@
                 {{-- Notification Center Button --}}
                 <div class="noti-btn" id="notiTrigger" onclick="toggleNotiDropdown(event)">
                     <span>🔔</span>
-                    <span class="noti-badge" id="notiUnreadBadge">4</span>
+                    <span class="noti-badge" id="notiUnreadBadge" style="{{ $unreadNotificationsCount > 0 ? '' : 'display:none' }}">{{ $unreadNotificationsCount }}</span>
                 </div>
 
                 {{-- Notification Dropdown --}}
@@ -1321,38 +1324,32 @@
                         <button type="button" class="noti-tab-btn" data-filter="stock">Kho & Review</button>
                     </div>
                     <div class="noti-list" id="notiList">
-                        <div class="noti-item unread" data-type="order" onclick="location.href='{{ route('admin.orders.index') }}'">
-                            <div class="noti-item-icon" style="color:var(--lime)">📦</div>
-                            <div>
-                                <div class="noti-item-title">Đơn hàng mới #ORD-8821</div>
-                                <div class="noti-item-desc">Khách đặt 1x Nike Zoom Mercurial Vapor 16 (COD) cần xác nhận.</div>
-                                <div class="noti-item-time">5 phút trước · Bán hàng</div>
+                        @forelse($realNotifications as $noti)
+                            @php
+                                $nType = match(true) {
+                                    str_contains($noti->type, 'order') => 'order',
+                                    str_contains($noti->type, 'ghn') || str_contains($noti->type, 'shipping') => 'shipping',
+                                    default => 'stock'
+                                };
+                                $nIcon = match($nType) {
+                                    'order' => '📦',
+                                    'shipping' => '🚚',
+                                    default => '⚡'
+                                };
+                            @endphp
+                            <div class="noti-item {{ is_null($noti->read_at) ? 'unread' : '' }}" data-id="{{ $noti->id }}" data-type="{{ $nType }}" onclick="handleNotificationClick({{ $noti->id }})">
+                                <div class="noti-item-icon">{{ $nIcon }}</div>
+                                <div>
+                                    <div class="noti-item-title">{{ $noti->title }}</div>
+                                    <div class="noti-item-desc">{{ $noti->body ?: 'Thông báo vận hành hệ thống' }}</div>
+                                    <div class="noti-item-time">{{ $noti->created_at ? $noti->created_at->diffForHumans() : '' }}</div>
+                                </div>
                             </div>
-                        </div>
-                        <div class="noti-item unread" data-type="shipping" onclick="location.href='{{ route('admin.dashboard', ['tab' => 'shipping']) }}#shipping'">
-                            <div class="noti-item-icon" style="color:var(--info)">🚚</div>
-                            <div>
-                                <div class="noti-item-title">GHN đối soát vận đơn #GHN9821</div>
-                                <div class="noti-item-desc">Kiện hàng đã giao thành công tại Cầu Giấy, Hà Nội.</div>
-                                <div class="noti-item-time">20 phút trước · GHN Express</div>
+                        @empty
+                            <div style="padding:28px 16px;text-align:center;color:var(--text-muted);font-size:12px">
+                                Không có thông báo mới.
                             </div>
-                        </div>
-                        <div class="noti-item unread" data-type="stock" onclick="location.href='{{ route('admin.dashboard', ['tab' => 'inventory']) }}#inventory'">
-                            <div class="noti-item-icon" style="color:var(--warning)">👟</div>
-                            <div>
-                                <div class="noti-item-title">Cảnh báo tồn kho Size 40/41</div>
-                                <div class="noti-item-desc">Predator 24 Elite TF màu Trắng chỉ còn 2 đôi trong kho.</div>
-                                <div class="noti-item-time">1 giờ trước · Kho & Variant</div>
-                            </div>
-                        </div>
-                        <div class="noti-item unread" data-type="stock" onclick="location.href='{{ route('admin.reviews.index') }}'">
-                            <div class="noti-item-icon" style="color:var(--lime)">★</div>
-                            <div>
-                                <div class="noti-item-title">Đánh giá 5 sao mới</div>
-                                <div class="noti-item-desc">Khách hàng nhận xét: "Giày rất êm và bám sân cỏ nhân tạo."</div>
-                                <div class="noti-item-time">2 giờ trước · Customer Voice</div>
-                            </div>
-                        </div>
+                        @endforelse
                     </div>
                 </div>
 
@@ -1398,8 +1395,8 @@
                 <button type="button" class="cmd-chip" data-filter="customers">Khách hàng</button>
                 <button type="button" class="cmd-chip" data-filter="products">Sản phẩm</button>
                 <button type="button" class="cmd-chip" data-filter="teams">Đội bóng</button>
-                <button type="button" class="cmd-chip" data-filter="waybills">Vận đơn GHN</button>
-                <button type="button" class="cmd-chip" data-filter="passports">Boot Passport</button>
+                <button type="button" class="cmd-chip" data-filter="second_hand">Second-hand</button>
+                <button type="button" class="cmd-chip" data-filter="boot_passports">Boot Passport</button>
             </div>
 
             <div class="cmd-results-list" id="cmdResultsList">
@@ -1419,8 +1416,8 @@
             <div class="passport-watermark">FIELDCRAFT</div>
             <div class="passport-header">
                 <div>
-                    <span class="passport-tag">CERTIFIED BOOT PASSPORT</span>
-                    <div class="passport-code" id="passModalCode">FC-PASS-8829-VN</div>
+                    <span class="passport-tag">HỘ CHIẾU SẢN PHẨM FIELDCRAFT</span>
+                    <div class="passport-code" id="passModalCode">FC-PASS</div>
                 </div>
                 <button type="button" style="background:transparent;border:0;color:var(--text-muted);font-size:20px;cursor:pointer" onclick="closeBootPassport()">✕</button>
             </div>
@@ -1428,15 +1425,15 @@
             <div style="display:flex;align-items:center;gap:14px;margin-bottom:18px">
                 <div style="width:56px;height:56px;border-radius:10px;background:var(--bg-panel-sub);border:1px solid var(--lime);display:flex;align-items:center;justify-content:center;font-size:28px">👟</div>
                 <div>
-                    <h3 style="font:700 18px/1.1 'Oswald',sans-serif;color:var(--text-main)" id="passModalName">Nike Zoom Mercurial Vapor 16 Pro TF</h3>
-                    <div class="muted" style="font-size:12px;margin-top:2px" id="passModalColor">Trắng / Xanh Neon</div>
+                    <h3 style="font:700 18px/1.1 'Oswald',sans-serif;color:var(--text-main)" id="passModalName">Sản phẩm Fieldcraft</h3>
+                    <div class="muted" style="font-size:12px;margin-top:2px" id="passModalColor">Tiêu chuẩn</div>
                 </div>
             </div>
 
             <div class="passport-spec-grid">
                 <div class="passport-spec-item">
                     <div class="passport-spec-lbl">Cỡ giày / Form chân</div>
-                    <div class="passport-spec-val" id="passModalSize">Size 41 · Form Bè</div>
+                    <div class="passport-spec-val" id="passModalSize">—</div>
                 </div>
                 <div class="passport-spec-item">
                     <div class="passport-spec-lbl">Mặt đế / Loại đinh</div>
@@ -1444,25 +1441,17 @@
                 </div>
                 <div class="passport-spec-item">
                     <div class="passport-spec-lbl">Đơn hàng & Ngày mua</div>
-                    <div class="passport-spec-val mono" id="passModalOrder">#ORD-9081 · 12/09/2026</div>
+                    <div class="passport-spec-val mono" id="passModalOrder">—</div>
                 </div>
                 <div class="passport-spec-item">
                     <div class="passport-spec-lbl">Thời hạn bảo hành</div>
-                    <div class="passport-spec-val" style="color:var(--lime)" id="passModalWarranty">Còn 168 ngày (180 ngày)</div>
-                </div>
-                <div class="passport-spec-item">
-                    <div class="passport-spec-lbl">Đánh giá xác thực</div>
-                    <div class="passport-spec-val" style="color:var(--warning)" id="passModalReview">★ 5.0 (Đã kiểm duyệt)</div>
-                </div>
-                <div class="passport-spec-item">
-                    <div class="passport-spec-lbl">Quyền lợi Second-hand</div>
-                    <div class="passport-spec-val" style="color:var(--info)" id="passModalSecondHand">Đủ điều kiện ký gửi</div>
+                    <div class="passport-spec-val" style="color:var(--lime)" id="passModalWarranty">Chính sách bảo hành Fieldcraft</div>
                 </div>
             </div>
 
-            <div style="display:flex;gap:10px;justify-content:flex-end">
+            <div style="display:flex;gap:10px;justify-content:flex-end;margin-top:16px">
                 <button type="button" class="btn small" onclick="closeBootPassport()">Đóng</button>
-                <button type="button" class="btn small lime" onclick="alert('✓ Mã Boot Passport đã được đối soát chính hãng trên hệ thống FIELDCRAFT!')">✓ Xác thực chuẩn</button>
+                <a href="{{ route('admin.dashboard', ['tab' => 'passport']) }}#passport" class="btn small lime">Xem danh sách hộ chiếu</a>
             </div>
         </div>
     </div>
@@ -1495,13 +1484,52 @@
             if (dd && dd.classList.contains('open')) dd.classList.remove('open');
         });
 
+        const csrfTokenMeta = document.querySelector('meta[name="csrf-token"]');
+        const csrfToken = csrfTokenMeta ? csrfTokenMeta.getAttribute('content') : '';
+
         function markAllNotificationsRead() {
-            document.querySelectorAll('#notiList .noti-item').forEach(item => item.classList.remove('unread'));
-            const badge = document.getElementById('notiUnreadBadge');
-            if (badge) {
-                badge.innerText = '0';
-                badge.style.display = 'none';
-            }
+            fetch('{{ route("admin.notifications.read-all") }}', {
+                method: 'POST',
+                headers: {
+                    'X-CSRF-TOKEN': csrfToken,
+                    'Accept': 'application/json',
+                    'Content-Type': 'application/json'
+                }
+            }).then(() => {
+                document.querySelectorAll('#notiList .noti-item').forEach(item => item.classList.remove('unread'));
+                const badge = document.getElementById('notiUnreadBadge');
+                if (badge) {
+                    badge.innerText = '0';
+                    badge.style.display = 'none';
+                }
+            }).catch(err => console.error(err));
+        }
+
+        function handleNotificationClick(id) {
+            if (!id) return;
+            fetch(`/admin/notifications/${id}/read`, {
+                method: 'PATCH',
+                headers: {
+                    'X-CSRF-TOKEN': csrfToken,
+                    'Accept': 'application/json',
+                    'Content-Type': 'application/json'
+                }
+            }).then(() => {
+                const item = document.querySelector(`.noti-item[data-id="${id}"]`);
+                if (item && item.classList.contains('unread')) {
+                    item.classList.remove('unread');
+                    const badge = document.getElementById('notiUnreadBadge');
+                    if (badge) {
+                        let cnt = parseInt(badge.innerText, 10) - 1;
+                        if (cnt <= 0) {
+                            badge.innerText = '0';
+                            badge.style.display = 'none';
+                        } else {
+                            badge.innerText = cnt;
+                        }
+                    }
+                }
+            }).catch(err => console.error(err));
         }
 
         // Notification filter tabs
@@ -1521,53 +1549,44 @@
             });
         });
 
-        // ── Command Palette (Ctrl + K) Implementation ──
+        // ── Command Palette (Ctrl + K) Live Backend Implementation ──
         const cmdPaletteOverlay = document.getElementById('cmdPaletteOverlay');
         const paletteInput = document.getElementById('paletteInput');
         const cmdResultsList = document.getElementById('cmdResultsList');
 
-        const paletteDatabase = [
-            // Orders
-            { type: 'orders', title: 'Đơn hàng #ORD-8821', sub: 'Nguyễn Văn Hải · 1.450.000 ₫ · Đang xử lý', icon: '📦', url: '{{ route("admin.orders.index") }}' },
-            { type: 'orders', title: 'Đơn hàng #ORD-7729', sub: 'Trần Minh Đức · 2.890.000 ₫ · Đang giao GHN', icon: '📦', url: '{{ route("admin.orders.index") }}' },
-            { type: 'orders', title: 'Đơn hàng #ORD-6610', sub: 'Lê Hoàng Nam · 950.000 ₫ · Hoàn tất', icon: '📦', url: '{{ route("admin.orders.index") }}' },
-            // Customers
-            { type: 'customers', title: 'Khách hàng: Nguyễn Văn Hải', sub: 'hai.nguyen@example.com · SĐT: 0988123456 · 4 đơn hàng', icon: '👤', url: '{{ route("admin.customers.index") }}' },
-            { type: 'customers', title: 'Khách hàng: Trần Minh Đức', sub: 'duc.tran@example.com · SĐT: 0912345678 · VIP PRO', icon: '👤', url: '{{ route("admin.customers.index") }}' },
-            // Products
-            { type: 'products', title: 'Nike Zoom Mercurial Vapor 16 Pro TF', sub: 'Giày đinh TF sân cỏ nhân tạo · 1.850.000 ₫ · 24 đôi tồn', icon: '👟', url: '{{ route("admin.products.index") }}' },
-            { type: 'products', title: 'adidas Predator 24 Elite TF', sub: 'Giày đinh TF kiểm soát bóng · 2.100.000 ₫ · 18 đôi tồn', icon: '👟', url: '{{ route("admin.products.index") }}' },
-            { type: 'products', title: 'Puma Future 7 Ultimate FG/AG', sub: 'Giày đinh FG/AG cỏ tự nhiên · 2.400.000 ₫ · 12 đôi tồn', icon: '👟', url: '{{ route("admin.products.index") }}' },
-            // Teams
-            { type: 'teams', title: 'Đội bóng: FC Saigon United', sub: 'Đội trưởng: Lê Minh · 16 thành viên · Đã tạo hồ sơ in ấn', icon: '🛡', url: '{{ route("admin.dashboard", ["tab" => "teams"]) }}#teams' },
-            { type: 'teams', title: 'Đội bóng: Hà Nội Phoenix', sub: 'Đội trưởng: Vũ Hoàng · 14 thành viên · Đang đặt lại áo', icon: '🛡', url: '{{ route("admin.dashboard", ["tab" => "teams"]) }}#teams' },
-            // Waybills
-            { type: 'waybills', title: 'Vận đơn GHN: #GHN9821001', sub: 'Giao Hàng Nhanh · Đang giao hàng tại Hà Nội', icon: '🚚', url: '{{ route("admin.dashboard", ["tab" => "shipping"]) }}#shipping' },
-            { type: 'waybills', title: 'Vận đơn GHN: #GHN7729045', sub: 'Giao Hàng Nhanh · Đã hoàn tất giao thành công', icon: '🚚', url: '{{ route("admin.dashboard", ["tab" => "shipping"]) }}#shipping' },
-            // Boot Passports
-            { type: 'passports', title: 'Boot Passport: FC-PASS-8829-VN', sub: 'Nike Vapor 16 · Size 41 · Bảo hành còn 168 ngày', icon: '🎫', action: 'showPassport' },
-            { type: 'passports', title: 'Boot Passport: FC-PASS-4412-VN', sub: 'adidas Predator 24 · Size 40 · Đã xác thực Second-hand', icon: '🎫', action: 'showPassport' },
-        ];
-
         let currentPaletteFilter = 'all';
         let selectedPaletteIndex = 0;
+        let allSearchResults = [];
         let visibleItems = [];
+        let searchDebounceTimer = null;
 
-        function renderPaletteResults(query = '') {
-            const q = query.trim().toLowerCase();
-            visibleItems = paletteDatabase.filter(item => {
-                const matchFilter = (currentPaletteFilter === 'all' || item.type === currentPaletteFilter);
-                const matchQuery = !q || item.title.toLowerCase().includes(q) || item.sub.toLowerCase().includes(q);
-                return matchFilter && matchQuery;
-            });
+        function filterAndRenderPalette() {
+            if (currentPaletteFilter === 'all') {
+                visibleItems = allSearchResults;
+            } else {
+                visibleItems = allSearchResults.filter(item => item.type === currentPaletteFilter);
+            }
 
             if (visibleItems.length === 0) {
-                cmdResultsList.innerHTML = `
-                    <div style="padding:32px 18px;text-align:center;color:var(--text-muted);font-size:13px">
-                        Không tìm thấy kết quả phù hợp với từ khóa "${query}".
-                    </div>
-                `;
+                const q = paletteInput ? paletteInput.value.trim() : '';
+                if (q.length < 2) {
+                    cmdResultsList.innerHTML = `
+                        <div style="padding:32px 18px;text-align:center;color:var(--text-muted);font-size:13px">
+                            Nhập tối thiểu 2 ký tự để tìm kiếm toàn bộ đơn hàng, khách hàng, sản phẩm, đội bóng, second-hand, hộ chiếu...
+                        </div>
+                    `;
+                } else {
+                    cmdResultsList.innerHTML = `
+                        <div style="padding:32px 18px;text-align:center;color:var(--text-muted);font-size:13px">
+                            Không tìm thấy dữ liệu phù hợp với bộ lọc trong hệ thống.
+                        </div>
+                    `;
+                }
                 return;
+            }
+
+            if (selectedPaletteIndex >= visibleItems.length) {
+                selectedPaletteIndex = 0;
             }
 
             let html = '';
@@ -1589,15 +1608,136 @@
             cmdResultsList.innerHTML = html;
         }
 
+        function executeLiveSearch(query) {
+            const q = query.trim();
+            if (q.length < 2) {
+                allSearchResults = [];
+                filterAndRenderPalette();
+                return;
+            }
+
+            cmdResultsList.innerHTML = `
+                <div style="padding:28px 18px;text-align:center;color:var(--text-muted);font-size:13px">
+                    Đang tra cứu hệ thống dữ liệu thực...
+                </div>
+            `;
+
+            fetch('{{ route("admin.global-search") }}?q=' + encodeURIComponent(q), {
+                headers: { 'Accept': 'application/json' }
+            })
+            .then(res => res.json())
+            .then(payload => {
+                const data = payload.data || {};
+                allSearchResults = [];
+
+                if (Array.isArray(data.orders)) {
+                    data.orders.forEach(o => {
+                        const custName = o.user ? o.user.name : (o.recipient_name || 'Khách vãng lai');
+                        const totalStr = Number(o.total || 0).toLocaleString('vi-VN') + ' ₫';
+                        allSearchResults.push({
+                            type: 'orders',
+                            title: `Đơn hàng #${o.number || o.id}`,
+                            sub: `${custName} · ${totalStr} · Vận đơn: ${o.ghn_order_code || 'Chưa tạo'}`,
+                            icon: '📦',
+                            url: `{{ url('/admin/orders') }}/${o.id}`
+                        });
+                    });
+                }
+
+                if (Array.isArray(data.customers)) {
+                    data.customers.forEach(c => {
+                        allSearchResults.push({
+                            type: 'customers',
+                            title: `Khách hàng: ${c.name}`,
+                            sub: `${c.email || ''} · SĐT: ${c.phone || '—'}`,
+                            icon: '👤',
+                            url: `{{ route('admin.customers.index') }}`
+                        });
+                    });
+                }
+
+                if (Array.isArray(data.products)) {
+                    data.products.forEach(p => {
+                        const stockSum = p.variants ? p.variants.reduce((acc, v) => acc + (v.stock || 0), 0) : 0;
+                        allSearchResults.push({
+                            type: 'products',
+                            title: `${p.brand ? p.brand + ' ' : ''}${p.name}`,
+                            sub: `Tồn kho: ${stockSum} đôi · ${Number(p.price || 0).toLocaleString('vi-VN')} ₫`,
+                            icon: '👟',
+                            url: `{{ url('/admin/products') }}/${p.id}/edit`
+                        });
+                    });
+                }
+
+                if (Array.isArray(data.teams)) {
+                    data.teams.forEach(t => {
+                        allSearchResults.push({
+                            type: 'teams',
+                            title: `Đội bóng: ${t.team_name}`,
+                            sub: `Đội trưởng: ${t.captain || 'Chưa rõ'} · SĐT: ${t.phone || '—'}`,
+                            icon: '🛡',
+                            url: `{{ route('admin.dashboard', ['tab' => 'teams']) }}#teams`
+                        });
+                    });
+                }
+
+                if (Array.isArray(data.second_hand)) {
+                    data.second_hand.forEach(sh => {
+                        allSearchResults.push({
+                            type: 'second_hand',
+                            title: `Second-hand: ${sh.brand} ${sh.product_name}`,
+                            sub: `Size: ${sh.size} · Giá ký gửi: ${Number(sh.asking_price || sh.price || 0).toLocaleString('vi-VN')} ₫`,
+                            icon: '♻️',
+                            url: `{{ route('admin.dashboard', ['tab' => 'second-hand']) }}#second-hand`
+                        });
+                    });
+                }
+
+                if (Array.isArray(data.boot_passports)) {
+                    data.boot_passports.forEach(bp => {
+                        const snap = bp.variant_snapshot || {};
+                        allSearchResults.push({
+                            type: 'boot_passports',
+                            title: `Boot Passport: ${bp.passport_code}`,
+                            sub: `${snap.name || 'Giày bóng đá'} · Size ${bp.size || snap.size || '—'} · Khách: ${bp.user ? bp.user.name : '—'}`,
+                            icon: '🎫',
+                            passportData: {
+                                code: bp.passport_code,
+                                name: snap.name || 'Giày bóng đá Fieldcraft',
+                                color: bp.color || snap.color || 'Tiêu chuẩn',
+                                size: `Size ${bp.size || snap.size || '—'}`,
+                                stud: bp.stud_type || snap.stud_type || 'TF Cỏ nhân tạo',
+                                order: bp.order ? `#${bp.order.number || bp.order.id} · ${bp.purchase_date || '—'}` : (bp.purchase_date || '—'),
+                                warranty: bp.warranty_until ? `Bảo hành đến ${bp.warranty_until}` : 'Bảo hành tiêu chuẩn'
+                            },
+                            action: 'showPassport'
+                        });
+                    });
+                }
+
+                selectedPaletteIndex = 0;
+                filterAndRenderPalette();
+            })
+            .catch(err => {
+                console.error(err);
+                cmdResultsList.innerHTML = `
+                    <div style="padding:28px 18px;text-align:center;color:var(--danger);font-size:13px">
+                        Không thể kết nối dịch vụ tìm kiếm. Vui lòng thử lại.
+                    </div>
+                `;
+            });
+        }
+
         function openCommandPalette() {
             cmdPaletteOverlay.classList.add('open');
             paletteInput.value = '';
             selectedPaletteIndex = 0;
-            renderPaletteResults();
+            allSearchResults = [];
+            filterAndRenderPalette();
             setTimeout(() => paletteInput.focus(), 50);
         }
 
-        function closeCommandPalette(e) {
+        function closeCommandPalette() {
             cmdPaletteOverlay.classList.remove('open');
         }
 
@@ -1605,8 +1745,8 @@
             const item = visibleItems[idx];
             if (!item) return;
             closeCommandPalette();
-            if (item.action === 'showPassport') {
-                openBootPassport('FC-PASS-8829-VN', 'Nike Zoom Mercurial Vapor 16 Pro TF', 'Trắng / Xanh Neon', 'Size 41 · Form Bè', 'TF Cỏ nhân tạo', '#ORD-8821 · 12/09/2026');
+            if (item.action === 'showPassport' && item.passportData) {
+                openBootPassport(item.passportData);
             } else if (item.url) {
                 window.location.href = item.url;
             }
@@ -1617,7 +1757,7 @@
             if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k') {
                 e.preventDefault();
                 openCommandPalette();
-            } else if (e.key === '/' && !['input', 'textarea'].includes(document.activeElement.tagName.toLowerCase())) {
+            } else if (e.key === '/' && !['input', 'textarea', 'select'].includes(document.activeElement.tagName.toLowerCase())) {
                 e.preventDefault();
                 openCommandPalette();
             } else if (e.key === 'Escape' && cmdPaletteOverlay.classList.contains('open')) {
@@ -1627,13 +1767,13 @@
                     e.preventDefault();
                     if (selectedPaletteIndex < visibleItems.length - 1) {
                         selectedPaletteIndex++;
-                        renderPaletteResults(paletteInput.value);
+                        filterAndRenderPalette();
                     }
                 } else if (e.key === 'ArrowUp') {
                     e.preventDefault();
                     if (selectedPaletteIndex > 0) {
                         selectedPaletteIndex--;
-                        renderPaletteResults(paletteInput.value);
+                        filterAndRenderPalette();
                     }
                 } else if (e.key === 'Enter') {
                     e.preventDefault();
@@ -1644,8 +1784,10 @@
 
         if (paletteInput) {
             paletteInput.addEventListener('input', () => {
-                selectedPaletteIndex = 0;
-                renderPaletteResults(paletteInput.value);
+                clearTimeout(searchDebounceTimer);
+                searchDebounceTimer = setTimeout(() => {
+                    executeLiveSearch(paletteInput.value);
+                }, 300);
             });
         }
 
@@ -1655,19 +1797,39 @@
                 chip.classList.add('active');
                 currentPaletteFilter = chip.dataset.filter;
                 selectedPaletteIndex = 0;
-                renderPaletteResults(paletteInput.value);
+                filterAndRenderPalette();
             });
         });
 
         // ── Boot Passport Card Preview ──
-        function openBootPassport(code, name, color, size, stud, order) {
+        function openBootPassport(codeOrData, name, color, size, stud, order, warranty) {
             const modal = document.getElementById('bootPassportModal');
-            if (code) document.getElementById('passModalCode').innerText = code;
-            if (name) document.getElementById('passModalName').innerText = name;
-            if (color) document.getElementById('passModalColor').innerText = color;
-            if (size) document.getElementById('passModalSize').innerText = size;
-            if (order) document.getElementById('passModalOrder').innerText = order;
-            if (modal) modal.classList.add('open');
+            if (!modal) return;
+
+            let data = {};
+            if (typeof codeOrData === 'object' && codeOrData !== null) {
+                data = codeOrData;
+            } else {
+                data = {
+                    code: codeOrData,
+                    name: name,
+                    color: color,
+                    size: size,
+                    stud: stud,
+                    order: order,
+                    warranty: warranty
+                };
+            }
+
+            if (data.code) document.getElementById('passModalCode').innerText = data.code;
+            if (data.name) document.getElementById('passModalName').innerText = data.name;
+            if (data.color) document.getElementById('passModalColor').innerText = data.color;
+            if (data.size) document.getElementById('passModalSize').innerText = data.size;
+            if (data.stud) document.getElementById('passModalStud').innerHTML = `<span class="stud-badge tf">${data.stud}</span>`;
+            if (data.order) document.getElementById('passModalOrder').innerText = data.order;
+            if (data.warranty) document.getElementById('passModalWarranty').innerText = data.warranty;
+
+            modal.classList.add('open');
         }
         function closeBootPassport() {
             const modal = document.getElementById('bootPassportModal');
