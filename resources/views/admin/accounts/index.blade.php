@@ -43,55 +43,57 @@
         <a class="btn" href="{{ route('admin.accounts.index') }}">XOÁ LỌC</a>
     </form>
 
-    <table class="table">
-        <thead>
-            <tr>
-                <th>TÀI KHOẢN</th>
-                <th>VAI TRÒ</th>
-                <th>ĐƠN HÀNG</th>
-                <th>CHI TIÊU HOÀN TẤT</th>
-                <th>THAM GIA</th>
-                <th style="text-align:right">CẬP NHẬT VAI TRÒ</th>
-            </tr>
-        </thead>
-        <tbody>
-            @forelse($accounts as $account)
+    <div class="table-responsive">
+        <table class="table">
+            <thead>
                 <tr>
-                    <td>
-                        <b>{{ $account->name }}</b>
-                        <div class="muted" style="font-size:0.85rem">{{ $account->email }}</div>
-                    </td>
-                    <td>
-                        <span class="status {{ $account->role === 'super-admin' ? 'completed' : ($account->role === 'admin' ? 'lime' : '') }}" style="{{ $account->role === 'customer' ? 'background:#132a1e;color:var(--lime)' : '' }}">
-                            {{ $roleMap[$account->role] ?? $account->role }}
-                        </span>
-                    </td>
-                    <td>{{ $account->orders_count }}</td>
-                    <td style="color:var(--lime)">{{ number_format($account->completed_spend ?? 0, 0, ',', '.') }} ₫</td>
-                    <td class="muted">{{ $account->created_at?->format('d/m/Y') }}</td>
-                    <td style="text-align:right">
-                        @if(auth()->user()->role === 'super-admin')
-                            <form class="actions" method="POST" action="{{ route('admin.accounts.role', $account) }}" style="justify-content:flex-end">
-                                @csrf @method('PATCH')
-                                <select name="role" style="padding:5px 8px;font-size:0.82rem;background:#09150f;color:var(--text);border:1px solid var(--border-panel);border-radius:4px">
-                                    <option value="customer" @selected($account->role === 'customer')>Khách hàng</option>
-                                    <option value="admin" @selected($account->role === 'admin')>Quản trị viên</option>
-                                    <option value="super-admin" @selected($account->role === 'super-admin')>Quản trị tối cao</option>
-                                </select>
-                                <button class="btn small" type="submit">LƯU</button>
-                            </form>
-                        @else
-                            <span class="muted" style="font-size:0.85rem">Chỉ xem</span>
-                        @endif
-                    </td>
+                    <th>TÀI KHOẢN</th>
+                    <th>VAI TRÒ</th>
+                    <th>ĐƠN HÀNG</th>
+                    <th>CHI TIÊU HOÀN TẤT</th>
+                    <th>THAM GIA</th>
+                    <th style="text-align:right">CẬP NHẬT VAI TRÒ</th>
                 </tr>
-            @empty
-                <tr>
-                    <td colspan="6" class="muted" style="text-align:center;padding:24px">Chưa có tài khoản nào.</td>
-                </tr>
-            @endforelse
-        </tbody>
-    </table>
+            </thead>
+            <tbody>
+                @forelse($accounts as $account)
+                    <tr>
+                        <td>
+                            <b>{{ $account->name }}</b>
+                            <div class="muted" style="font-size:0.85rem">{{ $account->email }}</div>
+                        </td>
+                        <td>
+                            <span class="status {{ $account->role === 'super-admin' ? 'completed' : ($account->role === 'admin' ? 'lime' : '') }}" style="{{ $account->role === 'customer' ? 'background:#132a1e;color:var(--lime)' : '' }}">
+                                {{ $roleMap[$account->role] ?? ($account->role ? ucfirst($account->role) : '—') }}
+                            </span>
+                        </td>
+                        <td class="mono">{{ $account->orders_count }}</td>
+                        <td class="mono" style="color:var(--lime)">{{ number_format($account->completed_spend ?? 0, 0, ',', '.') }} ₫</td>
+                        <td class="muted">{{ $account->created_at?->format('d/m/Y') }}</td>
+                        <td style="text-align:right">
+                            @if(auth()->user()->role === 'super-admin')
+                                <form class="actions" method="POST" action="{{ route('admin.accounts.role', $account) }}" style="justify-content:flex-end">
+                                    @csrf @method('PATCH')
+                                    <select name="role" style="padding:5px 8px;font-size:0.82rem;background:#09150f;color:var(--text);border:1px solid var(--border-panel);border-radius:4px">
+                                        <option value="customer" @selected($account->role === 'customer')>Khách hàng</option>
+                                        <option value="admin" @selected($account->role === 'admin')>Quản trị viên</option>
+                                        <option value="super-admin" @selected($account->role === 'super-admin')>Quản trị tối cao</option>
+                                    </select>
+                                    <button class="btn small" type="submit">LƯU</button>
+                                </form>
+                            @else
+                                <span class="muted" style="font-size:0.85rem">Chỉ xem</span>
+                            @endif
+                        </td>
+                    </tr>
+                @empty
+                    <tr>
+                        <td colspan="6" class="muted" style="text-align:center;padding:24px">Chưa có tài khoản nào.</td>
+                    </tr>
+                @endforelse
+            </tbody>
+        </table>
+    </div>
     <div style="margin-top:18px">{{ $accounts->links() }}</div>
 </section>
 @endsection

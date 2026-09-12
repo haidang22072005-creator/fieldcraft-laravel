@@ -90,63 +90,65 @@
     <div class="toolbar" style="margin-bottom:14px">
         <b style="font-size:1.1rem">Lịch sử đơn hàng ({{ $orders->count() }})</b>
     </div>
-    <table class="table">
-        <thead>
-            <tr>
-                <th>MÃ ĐƠN</th>
-                <th>NGÀY TẠO</th>
-                <th>TRẠNG THÁI</th>
-                <th>THANH TOÁN</th>
-                <th>VẬN CHUYỂN</th>
-                <th>SẢN PHẨM</th>
-                <th style="text-align:right">TỔNG TIỀN</th>
-                <th></th>
-            </tr>
-        </thead>
-        <tbody>
-            @forelse($orders as $order)
+    <div class="table-responsive">
+        <table class="table">
+            <thead>
                 <tr>
-                    <td>
-                        <a class="lime-link" href="{{ route('admin.orders.show', $order) }}">
-                            <b>{{ $order->number }}</b>
-                        </a>
-                    </td>
-                    <td>{{ $order->created_at?->format('d/m/Y H:i') }}</td>
-                    <td><span class="status {{ $order->status }}">{{ \App\Support\UiLabels::orderStatus($order->status) }}</span></td>
-                    <td>
-                        <span class="status">{{ \App\Support\UiLabels::paymentStatus($order->payment_status) }}</span>
-                        <div class="muted" style="font-size:0.75rem;margin-top:2px">{{ \App\Support\UiLabels::paymentMethod($order->payment_method) }}</div>
-                    </td>
-                    <td>
-                        <span class="status">{{ \App\Support\UiLabels::ghnStatus($order->shipping_status) }}</span>
-                        @if($order->ghn_order_code)
-                            <div class="muted" style="font-size:0.75rem;margin-top:2px">GHN: {{ $order->ghn_order_code }}</div>
-                        @endif
-                    </td>
-                    <td>
-                        <div style="font-size:0.85rem">
-                            <b>{{ $order->items->count() }} sản phẩm:</b>
-                            <ul style="margin:4px 0 0 16px;padding:0;color:var(--muted)">
-                                @foreach($order->items as $item)
-                                    <li>{{ $item->product_name }} ({{ $item->color ?? '—' }} / {{ $item->size ?? '—' }}) × {{ $item->quantity }}</li>
-                                @endforeach
-                            </ul>
-                        </div>
-                    </td>
-                    <td style="text-align:right">
-                        <b style="color:var(--lime);font-size:1rem">{{ number_format($order->total, 0, ',', '.') }} ₫</b>
-                    </td>
-                    <td>
-                        <a class="btn small" href="{{ route('admin.orders.show', $order) }}">CHI TIẾT</a>
-                    </td>
+                    <th>MÃ ĐƠN</th>
+                    <th>NGÀY TẠO</th>
+                    <th>TRẠNG THÁI</th>
+                    <th>THANH TOÁN</th>
+                    <th>VẬN CHUYỂN</th>
+                    <th>SẢN PHẨM</th>
+                    <th style="text-align:right">TỔNG TIỀN</th>
+                    <th></th>
                 </tr>
-            @empty
-                <tr>
-                    <td colspan="8" class="muted" style="text-align:center;padding:24px">Khách hàng chưa có đơn hàng nào.</td>
-                </tr>
-            @endforelse
-        </tbody>
-    </table>
+            </thead>
+            <tbody>
+                @forelse($orders as $order)
+                    <tr>
+                        <td>
+                            <a class="lime-link mono" href="{{ route('admin.orders.show', $order) }}">
+                                <b>#{{ $order->number }}</b>
+                            </a>
+                        </td>
+                        <td class="muted">{{ $order->created_at?->format('d/m/Y H:i') }}</td>
+                        <td><span class="status {{ $order->status }}">{{ \App\Support\UiLabels::orderStatus($order->status) }}</span></td>
+                        <td>
+                            <span class="status {{ $order->payment_status }}">{{ \App\Support\UiLabels::paymentStatus($order->payment_status) }}</span>
+                            <div class="muted" style="font-size:0.75rem;margin-top:2px">{{ \App\Support\UiLabels::paymentMethod($order->payment_method) }}</div>
+                        </td>
+                        <td>
+                            <span class="status {{ $order->shipping_status ?? 'muted' }}">{{ \App\Support\UiLabels::ghnStatus($order->shipping_status) }}</span>
+                            @if($order->ghn_order_code)
+                                <div class="muted mono" style="font-size:0.75rem;margin-top:2px">GHN: {{ $order->ghn_order_code }}</div>
+                            @endif
+                        </td>
+                        <td>
+                            <div style="font-size:0.85rem">
+                                <b>{{ $order->items->count() }} sản phẩm:</b>
+                                <ul style="margin:4px 0 0 16px;padding:0;color:var(--muted)">
+                                    @foreach($order->items as $item)
+                                        <li>{{ $item->product_name }} ({{ $item->color ?? '—' }} / {{ $item->size ?? '—' }}) × {{ $item->quantity }}</li>
+                                    @endforeach
+                                </ul>
+                            </div>
+                        </td>
+                        <td style="text-align:right">
+                            <b class="mono" style="color:var(--lime);font-size:1rem">{{ number_format($order->total, 0, ',', '.') }} ₫</b>
+                        </td>
+                        <td>
+                            <a class="btn small" href="{{ route('admin.orders.show', $order) }}">CHI TIẾT</a>
+                        </td>
+                    </tr>
+                @empty
+                    <tr>
+                        <td colspan="8" class="muted" style="text-align:center;padding:24px">Khách hàng chưa có đơn hàng nào.</td>
+                    </tr>
+                @endforelse
+            </tbody>
+        </table>
+    </div>
 </section>
 
 <!-- Team Profiles Section -->
@@ -169,28 +171,30 @@
                 </div>
             </div>
             @if($team->members->isNotEmpty())
-                <table class="table" style="font-size:0.85rem;margin-top:10px">
-                    <thead>
-                        <tr>
-                            <th>TÊN CẦU THỦ</th>
-                            <th>TÊN IN ÁO</th>
-                            <th>SỐ ÁO</th>
-                            <th>SIZE ÁO</th>
-                            <th>GHI CHÚ</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        @foreach($team->members as $member)
+                <div class="table-responsive">
+                    <table class="table" style="font-size:0.85rem;margin-top:10px">
+                        <thead>
                             <tr>
-                                <td><b>{{ $member->player_name }}</b></td>
-                                <td>{{ $member->shirt_name ?? '—' }}</td>
-                                <td><span class="status" style="background:#132a1e;color:var(--lime)">#{{ $member->shirt_number ?? '—' }}</span></td>
-                                <td>{{ $member->shirt_size ?? '—' }}</td>
-                                <td class="muted">{{ $member->notes ?? '—' }}</td>
+                                <th>TÊN CẦU THỦ</th>
+                                <th>TÊN IN ÁO</th>
+                                <th>SỐ ÁO</th>
+                                <th>SIZE ÁO</th>
+                                <th>GHI CHÚ</th>
                             </tr>
-                        @endforeach
-                    </tbody>
-                </table>
+                        </thead>
+                        <tbody>
+                            @foreach($team->members as $member)
+                                <tr>
+                                    <td><b>{{ $member->player_name }}</b></td>
+                                    <td>{{ $member->shirt_name ?? '—' }}</td>
+                                    <td><span class="status mono" style="background:#132a1e;color:var(--lime)">#{{ $member->shirt_number ?? '—' }}</span></td>
+                                    <td>{{ $member->shirt_size ?? '—' }}</td>
+                                    <td class="muted">{{ $member->notes ?? '—' }}</td>
+                                </tr>
+                            @endforeach
+                        </tbody>
+                    </table>
+                </div>
             @else
                 <p class="muted" style="margin-top:8px;font-size:0.85rem">Chưa có thành viên trong danh sách đội.</p>
             @endif
@@ -205,49 +209,53 @@
     <div class="toolbar" style="margin-bottom:14px">
         <b style="font-size:1.1rem">Đánh giá đã gửi ({{ $customer->reviews->count() }})</b>
     </div>
-    <table class="table">
-        <thead>
-            <tr>
-                <th>SẢN PHẨM</th>
-                <th>ĐÁNH GIÁ</th>
-                <th>NỘI DUNG</th>
-                <th>PHẢN HỒI FIELDCRAFT</th>
-                <th>TRẠNG THÁI</th>
-                <th>NGÀY</th>
-            </tr>
-        </thead>
-        <tbody>
-            @forelse($customer->reviews as $review)
-                <?php
-                    $reviewStatusMap = [
-                        'pending' => 'Chờ duyệt',
-                        'approved' => 'Đã duyệt',
-                        'rejected' => 'Từ chối',
-                        'hidden' => 'Đã ẩn',
-                    ];
-                ?>
+    <div class="table-responsive">
+        <table class="table">
+            <thead>
                 <tr>
-                    <td><b>{{ $review->product?->name ?? 'Sản phẩm không tồn tại' }}</b></td>
-                    <td style="color:#ffb703;white-space:nowrap">{{ str_repeat('★', (int) $review->rating) }}</td>
-                    <td>{{ $review->comment }}</td>
-                    <td>
-                        @if($review->admin_reply)
-                            <div style="font-size:0.85rem;color:var(--lime)">{{ $review->admin_reply }}</div>
-                        @else
-                            <span class="muted" style="font-size:0.8rem">Chưa phản hồi</span>
-                        @endif
-                    </td>
-                    <td>
-                        <span class="status">{{ $reviewStatusMap[$review->status] ?? $review->status }}</span>
-                    </td>
-                    <td class="muted" style="font-size:0.82rem">{{ $review->created_at?->format('d/m/Y') }}</td>
+                    <th>SẢN PHẨM</th>
+                    <th>ĐÁNH GIÁ</th>
+                    <th>NỘI DUNG</th>
+                    <th>PHẢN HỒI FIELDCRAFT</th>
+                    <th>TRẠNG THÁI</th>
+                    <th>NGÀY</th>
                 </tr>
-            @empty
-                <tr>
-                    <td colspan="6" class="muted" style="text-align:center;padding:16px">Khách hàng chưa gửi đánh giá nào.</td>
-                </tr>
-            @endforelse
-        </tbody>
-    </table>
+            </thead>
+            <tbody>
+                @forelse($customer->reviews as $review)
+                    @php
+                        $reviewStatusMap = [
+                            'pending' => 'Chờ duyệt',
+                            'approved' => 'Đã duyệt',
+                            'rejected' => 'Từ chối',
+                            'hidden' => 'Đã ẩn',
+                        ];
+                    @endphp
+                    <tr>
+                        <td><b>{{ $review->product?->name ?? 'Sản phẩm không tồn tại' }}</b></td>
+                        <td style="color:#ffb703;white-space:nowrap">{{ str_repeat('★', (int) $review->rating) }}</td>
+                        <td>{{ $review->comment }}</td>
+                        <td>
+                            @if($review->admin_reply)
+                                <div style="font-size:0.85rem;color:var(--lime)">{{ $review->admin_reply }}</div>
+                            @else
+                                <span class="muted" style="font-size:0.8rem">Chưa phản hồi</span>
+                            @endif
+                        </td>
+                        <td>
+                            <span class="status {{ $review->status === 'approved' ? 'completed' : ($review->status === 'rejected' ? 'cancelled' : 'pending') }}">
+                                {{ $reviewStatusMap[$review->status] ?? ($review->status ? ucfirst($review->status) : '—') }}
+                            </span>
+                        </td>
+                        <td class="muted" style="font-size:0.82rem">{{ $review->created_at?->format('d/m/Y') }}</td>
+                    </tr>
+                @empty
+                    <tr>
+                        <td colspan="6" class="muted" style="text-align:center;padding:16px">Khách hàng chưa gửi đánh giá nào.</td>
+                    </tr>
+                @endforelse
+            </tbody>
+        </table>
+    </div>
 </section>
 @endsection

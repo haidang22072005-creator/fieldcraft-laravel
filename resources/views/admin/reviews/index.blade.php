@@ -40,11 +40,11 @@
                         <span style="color:#ffb703">{{ str_repeat('★', (int) $review->rating) }}</span>
                     </div>
                 </div>
-                <span class="status {{ $review->status === 'approved' ? 'completed' : ($review->status === 'rejected' ? 'cancelled' : '') }}">
-                    {{ $reviewStatusMap[$review->status] ?? $review->status }}
+                <span class="status {{ $review->status === 'approved' ? 'completed' : ($review->status === 'rejected' ? 'cancelled' : 'pending') }}">
+                    {{ $reviewStatusMap[$review->status] ?? ($review->status ? ucfirst($review->status) : 'Khác') }}
                 </span>
             </div>
-            <p style="margin:10px 0;font-size:0.95rem;color:var(--text)">{{ $review->comment }}</p>
+            <p style="margin:10px 0;font-size:0.95rem;color:var(--text-main)">{{ $review->comment }}</p>
             <div class="actions" style="flex-wrap:wrap">
                 @foreach(['approved' => 'DUYỆT', 'rejected' => 'TỪ CHỐI', 'hidden' => 'ẨN', 'pending' => 'CHỜ DUYỆT'] as $value => $label)
                     <form method="POST" action="{{ route('admin.reviews.status', $review) }}">
@@ -60,7 +60,7 @@
             </div>
             <form method="POST" action="{{ route('admin.reviews.reply', $review) }}" style="display:flex;gap:8px;margin-top:12px;flex-wrap:wrap">
                 @csrf
-                <input name="reply" required maxlength="2000" value="{{ $review->admin_reply }}" placeholder="Phản hồi chính thức của FIELDCRAFT" style="flex:1;min-width:240px;padding:8px 12px;background:#09150f;border:1px solid var(--border-panel);border-radius:4px;color:var(--text)">
+                <input name="reply" required maxlength="2000" value="{{ $review->admin_reply }}" placeholder="Phản hồi chính thức của FIELDCRAFT" style="flex:1;min-width:240px;padding:8px 12px;background:#09150f;border:1px solid var(--border-panel);border-radius:4px;color:var(--text-main)">
                 <button class="btn small lime" type="submit">TRẢ LỜI FIELDCRAFT</button>
             </form>
         </article>
