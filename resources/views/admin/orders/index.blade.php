@@ -1,9 +1,91 @@
 @extends('layouts.admin')
+
 @section('content')
-<div class="crumb">OPERATIONS / ORDERS</div><div class="topline"><h1>Đơn hàng</h1></div>
+<div class="crumb">VẬN HÀNH / ĐƠN HÀNG</div>
+<div class="topline">
+    <div>
+        <h1 style="margin-bottom:4px">Quản lý đơn hàng</h1>
+        <div class="muted">Theo dõi, lọc và xử lý đơn hàng từ khách hàng</div>
+    </div>
+</div>
+
 <section class="panel">
-<form class="form-inline" method="GET"><input name="q" value="{{ $filters['q'] ?? '' }}" placeholder="Mã đơn, tên, email, SĐT"><select name="status"><option value="">Mọi trạng thái</option>@foreach(['pending','confirmed','packing','preparing','shipping','completed','cancelled'] as $value)<option value="{{ $value }}" @selected(($filters['status'] ?? '')===$value)>{{ \App\Support\UiLabels::orderStatus($value) }}</option>@endforeach</select><select name="payment_status"><option value="">Mọi thanh toán</option>@foreach(['pending','paid','failed'] as $value)<option value="{{ $value }}" @selected(($filters['payment_status'] ?? '')===$value)>{{ \App\Support\UiLabels::paymentStatus($value) }}</option>@endforeach</select><input type="date" name="date_from" value="{{ $filters['date_from'] ?? '' }}"><input type="date" name="date_to" value="{{ $filters['date_to'] ?? '' }}"><button class="btn lime">LỌC</button><a class="btn" href="{{ route('admin.orders.index') }}">XOÁ LỌC</a></form>
-<table class="table"><thead><tr><th>MÃ ĐƠN</th><th>KHÁCH HÀNG / SĐT</th><th>NGÀY</th><th>THANH TOÁN</th><th>TRẠNG THÁI</th><th>GHN</th><th>TỔNG</th><th></th></tr></thead><tbody>
-@forelse($orders as $order)<tr><td><a class="lime-link" href="{{ route('admin.orders.show',$order) }}"><b>{{ $order->number }}</b></a><div class="muted">{{ $order->items->count() }} sản phẩm</div></td><td>{{ $order->user?->name ?? $order->recipient_name }}<br><span class="muted">{{ $order->recipient_phone }}</span></td><td>{{ $order->created_at?->format('d/m/Y H:i') }}</td><td>{{ \App\Support\UiLabels::paymentMethod($order->payment_method) }}<br><span class="muted">{{ \App\Support\UiLabels::paymentStatus($order->payment_status) }}</span></td><td><span class="status {{ $order->status }}">{{ \App\Support\UiLabels::orderStatus($order->status) }}</span></td><td>{{ $order->ghn_order_code ?? '—' }}<br><span class="muted">{{ \App\Support\UiLabels::ghnStatus($order->shipping_status) }}</span></td><td><b>{{ number_format($order->total) }} ₫</b></td><td><a class="btn small" href="{{ route('admin.orders.show',$order) }}">CHI TIẾT</a></td></tr>@empty<tr><td colspan="8" class="muted">Chưa có đơn hàng phù hợp.</td></tr>@endforelse
-</tbody></table><div style="margin-top:18px">{{ $orders->links() }}</div></section>
+    <form class="form-inline" method="GET">
+        <input name="q" value="{{ $filters['q'] ?? '' }}" placeholder="Mã đơn, tên, email, SĐT">
+        <select name="status">
+            <option value="">Mọi trạng thái</option>
+            @foreach(['pending', 'confirmed', 'packing', 'preparing', 'shipping', 'completed', 'cancelled'] as $value)
+                <option value="{{ $value }}" @selected(($filters['status'] ?? '') === $value)>{{ \App\Support\UiLabels::orderStatus($value) }}</option>
+            @endforeach
+        </select>
+        <select name="payment_status">
+            <option value="">Mọi thanh toán</option>
+            @foreach(['pending', 'paid', 'failed'] as $value)
+                <option value="{{ $value }}" @selected(($filters['payment_status'] ?? '') === $value)>{{ \App\Support\UiLabels::paymentStatus($value) }}</option>
+            @endforeach
+        </select>
+        <input type="date" name="date_from" value="{{ $filters['date_from'] ?? '' }}" title="Từ ngày">
+        <input type="date" name="date_to" value="{{ $filters['date_to'] ?? '' }}" title="Đến ngày">
+        <button class="btn lime" type="submit">LỌC</button>
+        <a class="btn" href="{{ route('admin.orders.index') }}">XOÁ LỌC</a>
+    </form>
+
+    <table class="table">
+        <thead>
+            <tr>
+                <th>MÃ ĐƠN</th>
+                <th>KHÁCH HÀNG / SĐT</th>
+                <th>NGÀY ĐẶT</th>
+                <th>THANH TOÁN</th>
+                <th>TRẠNG THÁI</th>
+                <th>GHN</th>
+                <th style="text-align:right">TỔNG</th>
+                <th style="text-align:right">THAO TÁC</th>
+            </tr>
+        </thead>
+        <tbody>
+            @forelse($orders as $order)
+                <tr>
+                    <td>
+                        <a class="lime-link" href="{{ route('admin.orders.show', $order) }}">
+                            <b>{{ $order->number }}</b>
+                        </a>
+                        <div class="muted" style="font-size:0.8rem">{{ $order->items->count() }} sản phẩm</div>
+                    </td>
+                    <td>
+                        <b>{{ $order->user?->name ?? $order->recipient_name }}</b>
+                        <br><span class="muted" style="font-size:0.82rem">{{ $order->recipient_phone }}</span>
+                    </td>
+                    <td class="muted">{{ $order->created_at?->format('d/m/Y H:i') }}</td>
+                    <td>
+                        <span class="status">{{ \App\Support\UiLabels::paymentStatus($order->payment_status) }}</span>
+                        <div class="muted" style="font-size:0.75rem;margin-top:2px">{{ \App\Support\UiLabels::paymentMethod($order->payment_method) }}</div>
+                    </td>
+                    <td>
+                        <span class="status {{ $order->status }}">{{ \App\Support\UiLabels::orderStatus($order->status) }}</span>
+                    </td>
+                    <td>
+                        @if($order->ghn_order_code)
+                            <b style="color:var(--lime);font-size:0.85rem">{{ $order->ghn_order_code }}</b>
+                            <div class="muted" style="font-size:0.75rem">{{ \App\Support\UiLabels::ghnStatus($order->shipping_status) }}</div>
+                        @else
+                            <span class="muted">—</span>
+                        @endif
+                    </td>
+                    <td style="text-align:right">
+                        <b style="color:var(--lime)">{{ number_format($order->total, 0, ',', '.') }} ₫</b>
+                    </td>
+                    <td style="text-align:right">
+                        <a class="btn small" href="{{ route('admin.orders.show', $order) }}">CHI TIẾT</a>
+                    </td>
+                </tr>
+            @empty
+                <tr>
+                    <td colspan="8" class="muted" style="text-align:center;padding:24px">Chưa có đơn hàng phù hợp.</td>
+                </tr>
+            @endforelse
+        </tbody>
+    </table>
+    <div style="margin-top:18px">{{ $orders->links() }}</div>
+</section>
 @endsection

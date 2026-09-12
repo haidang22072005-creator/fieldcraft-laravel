@@ -64,7 +64,7 @@ class ProductController extends Controller
 
     private function syncVariants(Product $product, Request $request): void
     {
-        $request->validate(['variants' => ['required', 'array', 'min:1'], 'variants.*.sku' => ['required', 'string', 'max:100'], 'variants.*.color' => ['required', 'string', 'max:100'], 'variants.*.size' => ['required', 'string', 'max:30'], 'variants.*.price' => ['required', 'integer', 'min:0'], 'variants.*.stock' => ['required', 'integer', 'min:0']]);
+        $request->validate(['variants' => ['required', 'array', 'min:1'], 'variants.*.sku' => ['required', 'string', 'max:100'], 'variants.*.color' => ['required', 'string', 'max:100'], 'variants.*.size' => ['required', 'string', 'max:30'], 'variants.*.price' => ['required', 'integer', 'min:0'], 'variants.*.stock' => ['required', 'integer', 'min:0'], 'variants.*.stud_type' => ['nullable', 'in:TF,FG,AG,IC'], 'variants.*.foot_shape' => ['nullable', 'in:slim,standard,wide'], 'variants.*.surface_type' => ['nullable', 'string', 'max:50'], 'variants.*.low_stock_threshold' => ['nullable', 'integer', 'min:0']]);
         foreach ($request->input('variants') as $variantData) {
             $variant = $product->variants()->where('sku', $variantData['sku'])->first();
             $skuOwner = \App\Models\ProductVariant::where('sku', $variantData['sku'])->first();
@@ -75,7 +75,7 @@ class ProductController extends Controller
                 continue;
             }
             if ($variant) {
-                $variant->update(collect($variantData)->only(['color', 'size', 'price', 'stock'])->all());
+                $variant->update(collect($variantData)->only(['color', 'size', 'price', 'stock', 'stud_type', 'foot_shape', 'surface_type', 'low_stock_threshold'])->all());
             } else {
                 $product->variants()->create($variantData);
             }

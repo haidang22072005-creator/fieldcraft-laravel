@@ -51,4 +51,6 @@ class Order extends Model
     public function completedBy(): BelongsTo { return $this->belongsTo(User::class, 'completed_by'); }
 
     public function statusHistories(): HasMany { return $this->hasMany(OrderStatusHistory::class); }
+
+    public function customizationJobs(): HasMany { return $this->hasMany(CustomizationJob::class); }
 }

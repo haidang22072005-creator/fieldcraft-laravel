@@ -74,4 +74,10 @@ return [
         'cancel_url' => env('PAYOS_CANCEL_URL'),
     ],
 
+    'admin' => [
+        'low_stock_threshold' => (int) env('ADMIN_LOW_STOCK_THRESHOLD', 5),
+        'ops_stuck_hours' => (int) env('ADMIN_OPS_STUCK_HOURS', 48),
+        'important_sizes' => ['40', '41'],
+    ],
+
 ];

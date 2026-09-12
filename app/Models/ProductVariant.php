@@ -9,6 +9,11 @@ class ProductVariant extends Model
 {
     protected $guarded = [];
 
+    protected function casts(): array
+    {
+        return ['low_stock_threshold' => 'integer'];
+    }
+
     public function product(): BelongsTo
     {
         return $this->belongsTo(Product::class);

@@ -17,6 +17,9 @@ use App\Http\Controllers\PurchaseController;
 use App\Http\Controllers\ReviewController;
 use App\Http\Controllers\Admin\ReviewController as AdminReviewController;
 use App\Http\Controllers\Admin\AccountController;
+use App\Http\Controllers\Admin\IntelligenceController;
+use App\Http\Controllers\TeamProfileController;
+use App\Http\Controllers\CustomizationJobController;
 use Illuminate\Foundation\Auth\EmailVerificationRequest;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
@@ -108,7 +111,38 @@ Route::middleware(['auth', 'role:super-admin,admin'])->prefix('admin')->name('ad
     Route::get('/accounts', [AccountController::class, 'index'])->name('accounts.index');
     Route::post('/accounts/staff', [AccountController::class, 'store'])->middleware('role:super-admin')->name('accounts.store');
     Route::patch('/accounts/{user}/role', [AccountController::class, 'updateRole'])->middleware('role:super-admin')->name('accounts.role');
+    Route::prefix('intelligence')->name('intelligence.')->group(function () {
+        Route::get('/dashboard', [IntelligenceController::class, 'dashboard'])->name('dashboard');
+        Route::get('/revenue', [IntelligenceController::class, 'revenue'])->name('revenue');
+        Route::get('/ops-radar', [IntelligenceController::class, 'opsRadar'])->name('ops-radar');
+        Route::get('/finance', [IntelligenceController::class, 'finance'])->name('finance');
+        Route::get('/inventory', [IntelligenceController::class, 'inventory'])->name('inventory');
+        Route::get('/restock', [IntelligenceController::class, 'restock'])->name('restock');
+        Route::get('/performance', [IntelligenceController::class, 'performance'])->name('performance');
+        Route::get('/customers/{user}/360', [IntelligenceController::class, 'customer360'])->name('customers.360');
+    });
+    Route::apiResource('teams', TeamProfileController::class)->only(['index', 'show', 'store', 'update'])->parameters(['teams' => 'teamProfile']);
+    Route::post('/teams/{teamProfile}/members', [TeamProfileController::class, 'storeMember'])->name('teams.members.store');
+    Route::patch('/teams/{teamProfile}/members/{teamMember}', [TeamProfileController::class, 'updateMember'])->name('teams.members.update');
+    Route::get('/teams/{teamProfile}/draft-reorder', [TeamProfileController::class, 'draftReorder'])->name('teams.draft-reorder');
+    Route::post('/customization-jobs', [CustomizationJobController::class, 'store'])->name('customization-jobs.store');
+    Route::get('/customization-jobs/{customizationJob}', [CustomizationJobController::class, 'show'])->name('customization-jobs.show');
+    Route::patch('/customization-jobs/{customizationJob}/status', [CustomizationJobController::class, 'updateStatus'])->name('customization-jobs.status');
     if (app()->environment(['local', 'testing'])) {
         Route::post('/orders/{order}/manual-complete', [OrderController::class, 'manualComplete'])->name('orders.manual-complete');
     }
+});
+
+Route::middleware(['auth', 'verified'])->prefix('teams')->name('teams.')->group(function () {
+    Route::get('/', [TeamProfileController::class, 'index'])->name('index');
+    Route::get('/{teamProfile}', [TeamProfileController::class, 'show'])->name('show');
+    Route::post('/', [TeamProfileController::class, 'store'])->name('store');
+    Route::patch('/{teamProfile}', [TeamProfileController::class, 'update'])->name('update');
+    Route::post('/{teamProfile}/members', [TeamProfileController::class, 'storeMember'])->name('members.store');
+    Route::patch('/{teamProfile}/members/{teamMember}', [TeamProfileController::class, 'updateMember'])->name('members.update');
+    Route::get('/{teamProfile}/draft-reorder', [TeamProfileController::class, 'draftReorder'])->name('draft-reorder');
+});
+Route::middleware(['auth', 'verified'])->prefix('customization-jobs')->name('customization-jobs.')->group(function () {
+    Route::get('/{customizationJob}', [CustomizationJobController::class, 'show'])->name('show');
+    Route::patch('/{customizationJob}/status', [CustomizationJobController::class, 'updateStatus'])->name('status');
 });

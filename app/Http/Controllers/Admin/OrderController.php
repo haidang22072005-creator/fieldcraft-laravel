@@ -12,6 +12,7 @@ use App\Models\Review;
 use App\Models\User;
 use App\Services\GHNOrderService;
 use App\Services\GHNService;
+use App\Services\AdminIntelligenceService;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -20,7 +21,7 @@ use Illuminate\View\View;
 
 class OrderController extends Controller
 {
-    public function dashboard(Request $request): View
+    public function dashboard(Request $request, AdminIntelligenceService $intelligence): View
     {
         $range = (int) ($request->validate(['range' => ['nullable', 'in:7,30,12']])['range'] ?? 30);
         $completed = Order::query()->where('status', 'completed');
@@ -35,6 +36,10 @@ class OrderController extends Controller
             for ($i = 0; $i < $range; $i++) { $d = $start->copy()->addDays($i); $labels[] = $d->format('d/m'); $values[] = (int) $rows->get($d->format('Y-m-d'), collect())->sum('total'); }
         }
         return view('admin.dashboard', [
+            'intelligence' => $intelligence->dashboard(),
+            'revenueIntelligence' => ['7' => $intelligence->revenue(7), '30' => $intelligence->revenue(30), '3m' => $intelligence->revenue('3m'), '12m' => $intelligence->revenue('12m')],
+            'opsRadar' => $intelligence->opsRadar(),
+            'finance' => $intelligence->finance(),
             'range' => $range, 'chartLabels' => $labels, 'chartValues' => $values,
             'revenue' => (int) $completed->sum('total'), 'monthRevenue' => (int) (clone $completed)->where('created_at', '>=', $monthStart)->sum('total'),
             'ordersCount' => Order::count(), 'pendingOrderCount' => Order::where('status', 'pending')->count(), 'completedOrderCount' => Order::where('status', 'completed')->count(),
