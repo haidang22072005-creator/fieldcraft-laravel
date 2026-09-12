@@ -722,10 +722,25 @@
             color: var(--warning);
             border: 1px solid var(--warning-border);
         }
-        .status.cancelled, .status.failed, .status.rejected, .status.delivery_fail, .status.return_fail, .status.refunded {
+        .status.cancelled, .status.failed, .status.rejected, .status.delivery_fail, .status.return_fail {
             background: var(--danger-bg);
             color: var(--danger);
             border: 1px solid var(--danger-border);
+        }
+        .status.refund_required, .status.refund-required, .status.refund_failed, .status.refund-failed {
+            background: var(--danger-bg);
+            color: var(--danger);
+            border: 1px solid var(--danger-border);
+        }
+        .status.refund_pending, .status.refund-pending {
+            background: var(--warning-bg);
+            color: var(--warning);
+            border: 1px solid var(--warning-border);
+        }
+        .status.refunded, .status.refund-refunded {
+            background: var(--info-bg);
+            color: var(--info);
+            border: 1px solid var(--info-border);
         }
         .status.muted {
             background: var(--bg-panel-sub);

@@ -187,18 +187,32 @@
         <div class="muted" style="font-size:11px;margin-top:6px">Cập nhật: {{ $order->updated_at?->format('d/m H:i') }}</div>
     </div>
     @php
+        $latestPayment = $order->payments?->sortByDesc('id')->first();
+        $refundStatus = $latestPayment?->refund_status;
+        if (!$refundStatus || $refundStatus === 'none') {
+            $refundStatus = match($order->payment_status) {
+                'refund_required' => 'required',
+                'refund_pending' => 'pending',
+                'refunded' => 'refunded',
+                'refund_failed' => 'failed',
+                default => 'none',
+            };
+        }
         $refundLabels = [
-            'refund_required' => 'Cần hoàn tiền',
-            'refund_pending' => 'Đang xử lý hoàn tiền',
+            'required' => 'Cần hoàn tiền',
+            'pending' => 'Đang xử lý hoàn tiền',
             'refunded' => 'Đã hoàn tiền',
-            'refund_failed' => 'Hoàn tiền thất bại',
+            'failed' => 'Hoàn tiền thất bại',
         ];
-        $paymentStatusText = $refundLabels[$order->payment_status] ?? (\App\Support\UiLabels::paymentStatus($order->payment_status) ?: '—');
+        $paymentStatusText = ($refundStatus !== 'none' && isset($refundLabels[$refundStatus]))
+            ? $refundLabels[$refundStatus]
+            : (\App\Support\UiLabels::paymentStatus($order->payment_status) ?: '—');
+        $confirmedAdmin = ($latestPayment?->refund_confirmed_by) ? \App\Models\User::find($latestPayment->refund_confirmed_by) : null;
     @endphp
     <div class="order-kpi">
         <div class="order-kpi-lbl">Thanh toán</div>
         <div>
-            <span class="status {{ $order->payment_status }}">
+            <span class="status {{ $refundStatus !== 'none' ? 'refund-'.$refundStatus : $order->payment_status }}">
                 {{ $paymentStatusText }}
             </span>
         </div>
@@ -479,7 +493,7 @@
                     </div>
                     <div style="display:flex;justify-content:space-between;align-items:center">
                         <span class="muted">Trạng thái:</span>
-                        <span class="status {{ $order->payment_status }}">
+                        <span class="status {{ $refundStatus !== 'none' ? 'refund-'.$refundStatus : $order->payment_status }}">
                             {{ $paymentStatusText }}
                         </span>
                     </div>
@@ -507,6 +521,307 @@
                 @endif
             </div>
         </section>
+
+        {{-- Refund Management Panel (Only rendered when refund status is not 'none') --}}
+        @if($refundStatus !== 'none')
+            <section class="panel" style="margin-top:20px;border-color:{{ $refundStatus === 'required' || $refundStatus === 'failed' ? 'var(--danger-border)' : ($refundStatus === 'pending' ? 'var(--warning-border)' : 'var(--success-border)') }}">
+                <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">
+                    <span class="toolbar-title" style="font-size:14px">
+                        @if($refundStatus === 'required')
+                            💸 YÊU CẦU HOÀN TIỀN
+                        @elseif($refundStatus === 'pending')
+                            ⏳ ĐANG XỬ LÝ HOÀN TIỀN
+                        @elseif($refundStatus === 'refunded')
+                            ✓ ĐÃ HOÀN TIỀN
+                        @else
+                            ✕ HOÀN TIỀN THẤT BẠI
+                        @endif
+                    </span>
+                    <span class="status refund-{{ $refundStatus }}">
+                        {{ $refundLabels[$refundStatus] ?? $refundStatus }}
+                    </span>
+                </div>
+
+                <div style="display:flex;flex-direction:column;gap:10px;font-size:12px">
+                    <div style="display:flex;justify-content:space-between;align-items:center">
+                        <span class="muted">Phương thức:</span>
+                        <b>{{ \App\Support\UiLabels::paymentMethod($latestPayment?->provider ?? $order->payment_method) }}</b>
+                    </div>
+                    <div style="display:flex;justify-content:space-between;align-items:center">
+                        <span class="muted">Mã giao dịch / Request:</span>
+                        <b class="mono" style="font-size:11px">{{ $latestPayment?->transaction_id ?: ($latestPayment?->request_id ?: '—') }}</b>
+                    </div>
+                    <div style="display:flex;justify-content:space-between;align-items:center">
+                        <span class="muted">Số tiền:</span>
+                        <b class="mono lime-text" style="font-size:15px">{{ number_format($latestPayment?->amount ?? $order->total, 0, ',', '.') }} ₫</b>
+                    </div>
+
+                    @if($refundStatus === 'required')
+                        <div style="padding:10px;background:var(--bg-panel-sub);border-radius:6px;border:1px solid var(--border-panel);margin-top:4px">
+                            <span class="muted" style="font-weight:700">Lý do:</span>
+                            <div style="margin-top:4px;color:var(--text-main)">{{ $latestPayment?->refund_reason ?: ($order->cancel_reason ?: 'Yêu cầu hoàn tiền từ hệ thống.') }}</div>
+                        </div>
+
+                        <div style="margin-top:10px">
+                            <button type="button" class="btn lime" style="width:100%;font-weight:700" onclick="startRefundProcessing(this, '{{ route('admin.orders.refund.processing', $order) }}')">
+                                BẮT ĐẦU XỬ LÝ HOÀN TIỀN
+                            </button>
+                        </div>
+                    @elseif($refundStatus === 'pending')
+                        <div style="padding:10px;background:var(--bg-panel-sub);border-radius:6px;border:1px solid var(--border-panel);margin-top:4px">
+                            <span class="muted" style="font-weight:700">Lý do:</span>
+                            <div style="margin-top:4px;color:var(--text-main)">{{ $latestPayment?->refund_reason ?: 'Đang chờ xử lý hoàn tiền từ cổng thanh toán / ngân hàng.' }}</div>
+                        </div>
+
+                        <div style="display:flex;flex-direction:column;gap:8px;margin-top:12px">
+                            <button type="button" class="btn lime" style="width:100%;font-weight:700" onclick="openRefundConfirmModal()">
+                                ✓ XÁC NHẬN ĐÃ HOÀN TIỀN
+                            </button>
+                            <button type="button" class="btn danger" style="width:100%;font-weight:600" onclick="openRefundFailModal()">
+                                ✕ ĐÁNH DẤU HOÀN TIỀN THẤT BẠI
+                            </button>
+                        </div>
+                    @elseif($refundStatus === 'refunded')
+                        <div style="display:flex;justify-content:space-between;align-items:center">
+                            <span class="muted">Mã tham chiếu:</span>
+                            <b class="mono" style="color:var(--lime)">{{ $latestPayment?->refund_reference ?: '—' }}</b>
+                        </div>
+                        <div style="display:flex;justify-content:space-between;align-items:center">
+                            <span class="muted">Thời gian hoàn tất:</span>
+                            <span class="muted mono">{{ $latestPayment?->refunded_at ? $latestPayment->refunded_at->format('d/m/Y H:i') : '—' }}</span>
+                        </div>
+                        @if($confirmedAdmin)
+                            <div style="display:flex;justify-content:space-between;align-items:center">
+                                <span class="muted">Người xác nhận:</span>
+                                <b>{{ $confirmedAdmin->name }}</b>
+                            </div>
+                        @endif
+                        <div style="padding:10px;background:rgba(202,255,57,0.06);border-radius:6px;border:1px solid rgba(202,255,57,0.2);margin-top:4px;color:var(--lime);font-size:11px">
+                            ✓ Giao dịch đã được xác nhận hoàn tiền thành công. Điểm thưởng và đối soát tài chính đã được cập nhật.
+                        </div>
+                    @elseif($refundStatus === 'failed')
+                        <div style="padding:10px;background:var(--danger-bg);border-radius:6px;border:1px solid var(--danger-border);margin-top:4px">
+                            <b style="color:var(--danger)">Lý do thất bại:</b>
+                            <div style="margin-top:4px;color:var(--text-main)">{{ $latestPayment?->refund_reason ?: 'Không xác định lý do từ cổng thanh toán.' }}</div>
+                        </div>
+                        <div class="muted" style="font-size:11px;margin-top:4px">
+                            Giao dịch hoàn tiền không thành công. Trạng thái đã được ghi nhận trong nhật ký hoạt động để kiểm tra đối soát.
+                        </div>
+                    @endif
+                </div>
+            </section>
+        @endif
     </div>
 </div>
+
+{{-- Refund Modals --}}
+<div id="refundConfirmModal" class="fc-modal-backdrop" style="display:none;position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.85);backdrop-filter:blur(4px);z-index:9999;align-items:center;justify-content:center;padding:16px;">
+    <div class="fc-modal-card" style="background:#0d1e16;border:1px solid #1a382b;border-radius:10px;max-width:480px;width:100%;padding:24px;box-shadow:0 20px 40px rgba(0,0,0,0.6);color:var(--text-main);">
+        <h3 style="font:700 16px/1.2 'Oswald',sans-serif;letter-spacing:.04em;text-transform:uppercase;color:var(--lime);margin:0 0 8px">
+            Xác nhận đã hoàn tiền
+        </h3>
+        <p class="muted" style="font-size:12px;margin:0 0 16px;line-height:1.5">
+            Nhập mã xác nhận / mã tham chiếu hoàn tiền từ cổng thanh toán (MoMo, VietQR, PayOS, ngân hàng) để cập nhật trạng thái đơn.
+        </p>
+
+        <div style="margin-bottom:14px">
+            <label style="display:block;font:700 10px/1 'DM Mono',monospace;letter-spacing:.08em;text-transform:uppercase;color:var(--text-muted);margin-bottom:6px">
+                MÃ THAM CHIẾU HOÀN TIỀN (REFUND REFERENCE) <span style="color:var(--danger)">*</span>
+            </label>
+            <input type="text" id="refund_reference_input" maxlength="100" placeholder="VD: REF-928374 hoặc FT24..." style="width:100%;box-sizing:border-box;background:#07110d;border:1px solid #1a382b;color:#fff;padding:10px 12px;border-radius:6px;font-family:'DM Mono',monospace;font-size:13px">
+        </div>
+
+        <div id="refund_confirm_error" style="display:none;padding:10px;background:var(--danger-bg);border:1px solid var(--danger-border);border-radius:6px;color:var(--danger);font-size:12px;margin-bottom:14px"></div>
+
+        <div style="display:flex;justify-content:flex-end;gap:10px;margin-top:18px">
+            <button type="button" class="btn" onclick="closeRefundModals()">HỦY BỎ</button>
+            <button type="button" id="btn_submit_refund_confirm" class="btn lime" style="font-weight:700" onclick="submitRefundConfirm(this)">
+                XÁC NHẬN HOÀN TIỀN
+            </button>
+        </div>
+    </div>
+</div>
+
+<div id="refundFailModal" class="fc-modal-backdrop" style="display:none;position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.85);backdrop-filter:blur(4px);z-index:9999;align-items:center;justify-content:center;padding:16px;">
+    <div class="fc-modal-card" style="background:#0d1e16;border:1px solid #1a382b;border-radius:10px;max-width:480px;width:100%;padding:24px;box-shadow:0 20px 40px rgba(0,0,0,0.6);color:var(--text-main);">
+        <h3 style="font:700 16px/1.2 'Oswald',sans-serif;letter-spacing:.04em;text-transform:uppercase;color:var(--danger);margin:0 0 8px">
+            Đánh dấu hoàn tiền thất bại
+        </h3>
+        <p class="muted" style="font-size:12px;margin:0 0 16px;line-height:1.5">
+            Ghi nhận lý do cổng thanh toán hoặc ngân hàng từ chối hoàn tiền để lưu vết kiểm toán.
+        </p>
+
+        <div style="margin-bottom:14px">
+            <label style="display:block;font:700 10px/1 'DM Mono',monospace;letter-spacing:.08em;text-transform:uppercase;color:var(--text-muted);margin-bottom:6px">
+                LÝ DO THẤT BẠI <span style="color:var(--danger)">*</span>
+            </label>
+            <textarea id="refund_reason_input" maxlength="2000" rows="3" placeholder="Nhập lý do thất bại từ nhà cung cấp..." style="width:100%;box-sizing:border-box;background:#07110d;border:1px solid #1a382b;color:#fff;padding:10px 12px;border-radius:6px;font-size:13px;resize:vertical"></textarea>
+        </div>
+
+        <div id="refund_failed_error" style="display:none;padding:10px;background:var(--danger-bg);border:1px solid var(--danger-border);border-radius:6px;color:var(--danger);font-size:12px;margin-bottom:14px"></div>
+
+        <div style="display:flex;justify-content:flex-end;gap:10px;margin-top:18px">
+            <button type="button" class="btn" onclick="closeRefundModals()">HỦY BỎ</button>
+            <button type="button" id="btn_submit_refund_failed" class="btn danger" style="font-weight:700" onclick="submitRefundFailed(this)">
+                LƯU THẤT BẠI
+            </button>
+        </div>
+    </div>
+</div>
+
+<script>
+function openRefundConfirmModal() {
+    var m = document.getElementById('refundConfirmModal');
+    if (m) {
+        m.style.display = 'flex';
+        var inp = document.getElementById('refund_reference_input');
+        if (inp) { inp.value = ''; inp.focus(); }
+        var err = document.getElementById('refund_confirm_error');
+        if (err) err.style.display = 'none';
+    }
+}
+
+function openRefundFailModal() {
+    var m = document.getElementById('refundFailModal');
+    if (m) {
+        m.style.display = 'flex';
+        var inp = document.getElementById('refund_reason_input');
+        if (inp) { inp.value = ''; inp.focus(); }
+        var err = document.getElementById('refund_failed_error');
+        if (err) err.style.display = 'none';
+    }
+}
+
+function closeRefundModals() {
+    var m1 = document.getElementById('refundConfirmModal');
+    var m2 = document.getElementById('refundFailModal');
+    if (m1) m1.style.display = 'none';
+    if (m2) m2.style.display = 'none';
+}
+
+document.addEventListener('keydown', function(e) {
+    if (e.key === 'Escape') closeRefundModals();
+});
+document.addEventListener('click', function(e) {
+    if (e.target && e.target.classList && e.target.classList.contains('fc-modal-backdrop')) {
+        closeRefundModals();
+    }
+});
+
+async function handleRefundAction(url, payload, btn, errEl) {
+    if (btn) {
+        btn.disabled = true;
+        btn.dataset.origText = btn.innerText;
+        btn.innerText = 'Đang gửi...';
+    }
+    if (errEl) errEl.style.display = 'none';
+
+    try {
+        var token = '{{ csrf_token() }}';
+        var metaToken = document.querySelector('meta[name="csrf-token"]');
+        if (metaToken) token = metaToken.getAttribute('content');
+
+        var res = await fetch(url, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Accept': 'application/json',
+                'X-CSRF-TOKEN': token
+            },
+            body: payload ? JSON.stringify(payload) : null
+        });
+
+        var data = await res.json().catch(function() { return null; });
+
+        if (!res.ok) {
+            var errorMsg = 'Xử lý hoàn tiền không thành công.';
+            if (data) {
+                if (data.errors) {
+                    var firstKey = Object.keys(data.errors)[0];
+                    if (firstKey && data.errors[firstKey] && data.errors[firstKey][0]) {
+                        errorMsg = data.errors[firstKey][0];
+                    }
+                } else if (data.message) {
+                    errorMsg = data.message;
+                }
+            }
+            if (errEl) {
+                errEl.innerText = errorMsg;
+                errEl.style.display = 'block';
+            } else {
+                alert(errorMsg);
+            }
+            if (btn) {
+                btn.disabled = false;
+                btn.innerText = btn.dataset.origText;
+            }
+            return;
+        }
+
+        // DO NOT claim refunded before backend responds success:
+        window.location.reload();
+    } catch (err) {
+        var errorMsg = 'Lỗi kết nối máy chủ. Vui lòng thử lại.';
+        if (errEl) {
+            errEl.innerText = errorMsg;
+            errEl.style.display = 'block';
+        } else {
+            alert(errorMsg);
+        }
+        if (btn) {
+            btn.disabled = false;
+            btn.innerText = btn.dataset.origText;
+        }
+    }
+}
+
+function startRefundProcessing(btn, url) {
+    if (!confirm('Bạn có chắc chắn muốn bắt đầu xử lý hoàn tiền cho đơn hàng này?')) {
+        return;
+    }
+    handleRefundAction(url, null, btn, null);
+}
+
+function submitRefundConfirm(btn) {
+    var input = document.getElementById('refund_reference_input');
+    var errEl = document.getElementById('refund_confirm_error');
+    var ref = input ? input.value.trim() : '';
+
+    if (!ref) {
+        if (errEl) {
+            errEl.innerText = 'Vui lòng nhập mã xác nhận / mã tham chiếu từ nhà cung cấp.';
+            errEl.style.display = 'block';
+        }
+        if (input) input.focus();
+        return;
+    }
+
+    if (!confirm('Xác nhận giao dịch đã được hoàn tiền thành công từ nhà cung cấp với mã: ' + ref + '?')) {
+        return;
+    }
+
+    handleRefundAction('{{ route('admin.orders.refund.confirm', $order) }}', { refund_reference: ref }, btn, errEl);
+}
+
+function submitRefundFailed(btn) {
+    var input = document.getElementById('refund_reason_input');
+    var errEl = document.getElementById('refund_failed_error');
+    var reason = input ? input.value.trim() : '';
+
+    if (!reason) {
+        if (errEl) {
+            errEl.innerText = 'Vui lòng nhập lý do hoàn tiền thất bại.';
+            errEl.style.display = 'block';
+        }
+        if (input) input.focus();
+        return;
+    }
+
+    if (!confirm('Bạn có chắc chắn muốn đánh dấu hoàn tiền thất bại với lý do này?')) {
+        return;
+    }
+
+    handleRefundAction('{{ route('admin.orders.refund.failed', $order) }}', { refund_reason: reason }, btn, errEl);
+}
+</script>
 @endsection

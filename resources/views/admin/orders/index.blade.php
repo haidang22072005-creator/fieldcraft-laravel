@@ -71,9 +71,32 @@
                         <td class="muted">{{ $order->created_at?->format('d/m/Y H:i') }}</td>
                         <td>
                             @php
+                                $latestPayment = $order->relationLoaded('payments')
+                                    ? $order->payments->sortByDesc('id')->first()
+                                    : $order->payments()->latest('id')->first();
+                                $refundStatus = $latestPayment?->refund_status;
+                                if (!$refundStatus || $refundStatus === 'none') {
+                                    $refundStatus = match($order->payment_status) {
+                                        'refund_required' => 'required',
+                                        'refund_pending' => 'pending',
+                                        'refunded' => 'refunded',
+                                        'refund_failed' => 'failed',
+                                        default => null,
+                                    };
+                                }
+                                $refundBadgeLabels = [
+                                    'required' => 'Cần hoàn tiền',
+                                    'pending' => 'Đang xử lý hoàn tiền',
+                                    'refunded' => 'Đã hoàn tiền',
+                                    'failed' => 'Hoàn tiền thất bại',
+                                ];
                                 $pLabel = $orderPaymentOptions[$order->payment_status] ?? (\App\Support\UiLabels::paymentStatus($order->payment_status) ?: '—');
                             @endphp
-                            <span class="status {{ $order->payment_status }}">{{ $pLabel }}</span>
+                            @if($refundStatus && isset($refundBadgeLabels[$refundStatus]))
+                                <span class="status refund-{{ $refundStatus }}">{{ $refundBadgeLabels[$refundStatus] }}</span>
+                            @else
+                                <span class="status {{ $order->payment_status }}">{{ $pLabel }}</span>
+                            @endif
                             <div class="muted" style="font-size:0.75rem;margin-top:2px">{{ \App\Support\UiLabels::paymentMethod($order->payment_method) }}</div>
                         </td>
                         <td>

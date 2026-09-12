@@ -742,6 +742,7 @@
                     'shipping_stuck' => 'Đơn giao bị treo',
                     'ghn_delivered_not_completed' => 'Chưa hoàn tất đơn',
                     'repeated_payment_failures' => 'Lỗi thanh toán nhiều lần',
+                    'refund_required' => 'Cần hoàn tiền',
                     'low_stock_variant' => 'Tồn kho thấp',
                     'important_size_low_stock' => 'Size chủ lực sắp hết',
                     'low_rating_without_reply' => 'Đánh giá thấp chưa phản hồi',
@@ -960,7 +961,12 @@
             <div class="kpi-card">
                 <span class="kpi-title">Đơn hủy / Hoàn tiền</span>
                 <div class="kpi-val" style="color:var(--danger)">{{ number_format($financeData['cancelled_order_value']) }} ₫</div>
-                <span class="muted" style="font-size:11px">Hoàn tiền: {{ number_format($financeData['refunded_amount']) }} ₫</span>
+                <div class="muted" style="font-size:11px;margin-top:4px">
+                    Đã hoàn: <b class="mono" style="color:var(--text-main)">{{ number_format($financeData['refunded_amount']) }} ₫</b>
+                    @if(($financeData['refund_required_count'] ?? 0) > 0)
+                        · Cần hoàn: <b class="mono" style="color:var(--warning)">{{ number_format($financeData['refund_required_amount'] ?? 0) }} ₫</b> ({{ $financeData['refund_required_count'] }})
+                    @endif
+                </div>
             </div>
         </div>
 
