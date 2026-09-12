@@ -24,4 +24,6 @@ class TeamProfile extends Model
     {
         return $this->hasMany(TeamOrderDraft::class);
     }
+
+    public function campaigns(): HasMany { return $this->hasMany(MatchdayCampaign::class); }
 }

@@ -82,6 +82,7 @@ return back()->with('success', 'Đã cập nhật trạng thái đơn.');
             try {
                 $ghnOrders->createAndStoreWaybill($order->fresh());
             } catch (GHNException $exception) {
+                app(\App\Services\AdminNotificationService::class)->notify('ghn_failure', 'GHN không tạo được vận đơn', $order->number, ['reason' => $exception->getMessage()], $order);
                 throw ValidationException::withMessages(['status' => 'Không thể bàn giao đơn hàng cho GHN: '.$exception->getMessage()]);
             }
         }
@@ -93,8 +94,9 @@ return back()->with('success', 'Đã cập nhật trạng thái đơn.');
             $locked->update(['status' => $status]);
             $this->recordStatus($locked, $from, $status, 'admin', $request->user()->id);
         });
+        app(\App\Services\ActivityLogService::class)->record('order.status_changed', $order, ['status' => $status], $request->user()->id);
 
-        return back()->with('success', 'Đã cập nhật trạng thái đơn.');
+return back()->with('success', 'Đã cập nhật trạng thái đơn.');
     }
 
     public function syncGhn(Order $order, GHNOrderService $ghnOrders): RedirectResponse
@@ -105,10 +107,10 @@ return back()->with('success', 'Đã cập nhật trạng thái đơn.');
         if (($tracking['source'] ?? null) !== 'ghn') {
             throw ValidationException::withMessages(['order' => 'Chưa thể đồng bộ trạng thái từ GHN.']);
         } $shippingStatus = (string) ($tracking['normalized_status'] ?? $order->shipping_status);
-        DB::transaction(function () use ($order, $shippingStatus): void {
+        $from = null;
+        DB::transaction(function () use ($order, $shippingStatus, &$from): void {
             $locked = Order::lockForUpdate()->findOrFail($order->id);
             $updates = ['shipping_status' => $shippingStatus];
-            $from = null;
             if ($shippingStatus === 'delivered' && $locked->status !== 'cancelled') {
                 $updates['completed_at'] = $locked->completed_at ?? now();
                 if ($locked->status !== 'completed') {
@@ -118,8 +120,14 @@ return back()->with('success', 'Đã cập nhật trạng thái đơn.');
             } $locked->update($updates);
             if ($from) {
                 $this->recordStatus($locked, $from, 'completed', 'ghn', null);
+                app(\App\Services\AdminNotificationService::class)->notify('ghn_delivered', 'GHN đã giao đơn hàng', $locked->number, [], $locked);
             }
         });
+        if ($from) {
+            $completed = $order->fresh();
+            app(\App\Services\LoyaltyService::class)->recordCompletedOrder($completed);
+            app(\App\Services\BootPassportService::class)->generateForOrder($completed);
+        }
 
         return back()->with('success', 'Đã đồng bộ trạng thái GHN.');
     }
@@ -135,6 +143,9 @@ return back()->with('success', 'Đã cập nhật trạng thái đơn.');
                 $this->recordStatus($locked, $from, 'completed', 'admin', $request->user()->id);
             }
         });
+        $completed = $order->fresh();
+        app(\App\Services\LoyaltyService::class)->recordCompletedOrder($completed);
+        app(\App\Services\BootPassportService::class)->generateForOrder($completed);
 
         return back()->with('success', 'Đã xác nhận giao thành công (môi trường local/sandbox).');
     }

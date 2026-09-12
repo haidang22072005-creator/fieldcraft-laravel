@@ -8,6 +8,18 @@ use App\Http\Controllers\Admin\OrderController;
 use App\Http\Controllers\Admin\ProductController;
 use App\Http\Controllers\Admin\ReviewController as AdminReviewController;
 use App\Http\Controllers\Admin\TeamOrderDraftController;
+use App\Http\Controllers\Admin\AbandonedCartController;
+use App\Http\Controllers\Admin\ActivityController;
+use App\Http\Controllers\Admin\BootPassportController as AdminBootPassportController;
+use App\Http\Controllers\Admin\CampaignController;
+use App\Http\Controllers\Admin\CrossSellController;
+use App\Http\Controllers\Admin\GlobalSearchController;
+use App\Http\Controllers\Admin\KanbanController;
+use App\Http\Controllers\Admin\LoyaltyController;
+use App\Http\Controllers\Admin\NotificationController;
+use App\Http\Controllers\Admin\SecondHandController as AdminSecondHandController;
+use App\Http\Controllers\Admin\ShippingHubController;
+use App\Http\Controllers\Admin\TrendController;
 use App\Http\Controllers\AuthController;
 use App\Http\Controllers\CartController;
 use App\Http\Controllers\CheckoutController;
@@ -19,8 +31,10 @@ use App\Http\Controllers\PayOSPaymentController;
 use App\Http\Controllers\PurchaseController;
 use App\Http\Controllers\ReviewController;
 use App\Http\Controllers\SettingsController;
+use App\Http\Controllers\SecondHandController;
 use App\Http\Controllers\StorefrontController;
 use App\Http\Controllers\TeamProfileController;
+use App\Http\Controllers\BootPassportController;
 use Illuminate\Foundation\Auth\EmailVerificationRequest;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
@@ -106,6 +120,7 @@ Route::middleware(['auth', 'role:super-admin,admin'])->prefix('admin')->name('ad
     Route::get('/customers/{user}', [CustomerController::class, 'show'])->name('customers.show');
     Route::post('/customers/{user}/reset-password', [CustomerController::class, 'resetPassword'])->name('customers.reset-password');
     Route::get('/orders', [OrderController::class, 'index'])->name('orders.index');
+    Route::get('/orders/kanban', KanbanController::class)->name('orders.kanban');
     Route::get('/orders/{order}', [OrderController::class, 'show'])->name('orders.show');
     Route::patch('/orders/{order}/status', [OrderController::class, 'updateStatus'])->name('orders.status');
     Route::post('/orders/{order}/sync-ghn', [OrderController::class, 'syncGhn'])->middleware('throttle:30,1')->name('orders.sync-ghn');
@@ -136,6 +151,55 @@ Route::middleware(['auth', 'role:super-admin,admin'])->prefix('admin')->name('ad
     Route::post('/customization-jobs', [CustomizationJobController::class, 'store'])->name('customization-jobs.store');
     Route::get('/customization-jobs/{customizationJob}', [CustomizationJobController::class, 'show'])->name('customization-jobs.show');
     Route::patch('/customization-jobs/{customizationJob}/status', [CustomizationJobController::class, 'updateStatus'])->name('customization-jobs.status');
+    Route::prefix('loyalty')->name('loyalty.')->group(function () {
+        Route::get('/', [LoyaltyController::class, 'index'])->name('index');
+        Route::get('/segments', [LoyaltyController::class, 'segments'])->name('segments');
+        Route::get('/customers/{user}', [LoyaltyController::class, 'show'])->name('show');
+    });
+    Route::prefix('cross-sell')->name('cross-sell.')->group(function () {
+        Route::get('/', [CrossSellController::class, 'index'])->name('index');
+        Route::post('/', [CrossSellController::class, 'store'])->name('store');
+        Route::get('/recommendations', [CrossSellController::class, 'recommend'])->name('recommend');
+        Route::delete('/{crossSellRule}', [CrossSellController::class, 'destroy'])->name('destroy');
+    });
+    Route::prefix('abandoned-carts')->name('abandoned-carts.')->group(function () {
+        Route::get('/', [AbandonedCartController::class, 'index'])->name('index');
+        Route::post('/{cart}/contacted', [AbandonedCartController::class, 'contacted'])->name('contacted');
+    });
+    Route::prefix('trends')->name('trends.')->group(function () {
+        Route::get('/', [TrendController::class, 'index'])->name('index');
+        Route::post('/', [TrendController::class, 'store'])->name('store');
+        Route::post('/provider', [TrendController::class, 'provider'])->name('provider');
+    });
+    Route::prefix('campaigns')->name('campaigns.')->group(function () {
+        Route::get('/', [CampaignController::class, 'index'])->name('index');
+        Route::post('/', [CampaignController::class, 'store'])->name('store');
+        Route::get('/{campaign}', [CampaignController::class, 'show'])->name('show');
+        Route::post('/{campaign}/approve', [CampaignController::class, 'approve'])->name('approve');
+        Route::patch('/{campaign}/status', [CampaignController::class, 'status'])->name('status');
+    });
+    Route::prefix('second-hand')->name('second-hand.')->group(function () {
+        Route::get('/', [AdminSecondHandController::class, 'index'])->name('index');
+        Route::get('/{secondHandListing}', [AdminSecondHandController::class, 'show'])->name('show');
+        Route::patch('/{secondHandListing}/status', [AdminSecondHandController::class, 'status'])->name('status');
+    });
+    Route::prefix('boot-passports')->name('boot-passports.')->group(function () {
+        Route::get('/', [AdminBootPassportController::class, 'index'])->name('index');
+        Route::post('/generate', [AdminBootPassportController::class, 'generate'])->name('generate');
+        Route::get('/{bootPassport}', [AdminBootPassportController::class, 'show'])->name('show');
+    });
+    Route::prefix('shipping-hub')->name('shipping-hub.')->group(function () {
+        Route::get('/', [ShippingHubController::class, 'index'])->name('index');
+        Route::get('/providers', [ShippingHubController::class, 'providers'])->name('providers');
+    });
+    Route::get('/activity', [ActivityController::class, 'index'])->name('activity.index');
+    Route::prefix('notifications')->name('notifications.')->group(function () {
+        Route::get('/', [NotificationController::class, 'index'])->name('index');
+        Route::post('/sync-low-stock', [NotificationController::class, 'syncLowStock'])->name('sync-low-stock');
+        Route::patch('/{notification}/read', [NotificationController::class, 'read'])->name('read');
+        Route::post('/read-all', [NotificationController::class, 'readAll'])->name('read-all');
+    });
+    Route::get('/global-search', GlobalSearchController::class)->name('global-search');
     if (app()->environment(['local', 'testing'])) {
         Route::post('/orders/{order}/manual-complete', [OrderController::class, 'manualComplete'])->name('orders.manual-complete');
     }
@@ -152,4 +216,13 @@ Route::middleware(['auth', 'verified'])->prefix('teams')->name('teams.')->group(
 Route::middleware(['auth', 'verified'])->prefix('customization-jobs')->name('customization-jobs.')->group(function () {
     Route::get('/{customizationJob}', [CustomizationJobController::class, 'show'])->name('show');
     Route::patch('/{customizationJob}/status', [CustomizationJobController::class, 'updateStatus'])->name('status');
+});
+Route::middleware(['auth', 'verified'])->prefix('second-hand')->name('second-hand.')->group(function () {
+    Route::get('/', [SecondHandController::class, 'index'])->name('index');
+    Route::post('/', [SecondHandController::class, 'store'])->name('store');
+    Route::get('/{secondHandListing}', [SecondHandController::class, 'show'])->name('show');
+});
+Route::middleware(['auth', 'verified'])->prefix('boot-passports')->name('boot-passports.')->group(function () {
+    Route::get('/', [BootPassportController::class, 'index'])->name('index');
+    Route::get('/{bootPassport}', [BootPassportController::class, 'show'])->name('show');
 });

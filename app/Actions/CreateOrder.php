@@ -69,6 +69,7 @@ class CreateOrder
 
             foreach ($lockedVariants as [$variant, $quantity]) {
                 $variant->decrement('stock', $quantity);
+                app(\App\Services\AdminNotificationService::class)->syncImportantSizeLowStockForVariant($variant->fresh());
                 $order->items()->create([
                     'product_variant_id' => $variant->id,
                     'product_name' => $variant->product->name,
@@ -89,6 +90,8 @@ class CreateOrder
                 ]);
                 $coupon->increment('used_count');
             }
+
+            if ($order->status === 'completed') app(\App\Services\LoyaltyService::class)->recordCompletedOrder($order);
 
             return $order;
         });

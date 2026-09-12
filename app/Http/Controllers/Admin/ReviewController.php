@@ -23,6 +23,7 @@ class ReviewController extends Controller
     {
         $status = $request->validate(['status' => ['required', 'in:pending,approved,rejected,hidden']])['status'];
         $review->update(['status' => $status]);
+        app(\App\Services\ActivityLogService::class)->record('review.status_changed', $review, ['status' => $status], $request->user()->id);
 
         return back()->with('success', 'Đã cập nhật trạng thái đánh giá.');
     }
@@ -35,6 +36,7 @@ class ReviewController extends Controller
             'admin_replied_by' => $request->user()->id,
             'admin_replied_at' => now(),
         ]);
+        app(\App\Services\ActivityLogService::class)->record('review.replied', $review, [], $request->user()->id);
 
         return back()->with('success', 'Đã lưu phản hồi FIELDCRAFT.');
     }
@@ -42,6 +44,7 @@ class ReviewController extends Controller
     public function destroy(Review $review): RedirectResponse
     {
         $review->delete();
+        app(\App\Services\ActivityLogService::class)->record('review.deleted', $review, [], $request->user()->id);
 
         return back()->with('success', 'Đã xóa đánh giá vi phạm.');
     }

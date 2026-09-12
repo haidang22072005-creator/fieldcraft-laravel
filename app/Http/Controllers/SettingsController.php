@@ -10,12 +10,17 @@ use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Validation\Rules\Password;
 use Illuminate\View\View;
+use App\Services\LoyaltyService;
 
 class SettingsController extends Controller
 {
-    public function index(Request $request): View
+    public function index(Request $request, LoyaltyService $loyalty): View
     {
-        return view('settings', ['user' => $request->user(), 'addresses' => $request->user()?->addresses()->latest('is_default')->get() ?? collect()]);
+        $user = $request->user();
+        $profile = $loyalty->profile($user);
+        $user->setAttribute('loyalty_tier', $profile['tier']);
+        $user->setAttribute('loyalty_points', $profile['loyalty_points']);
+        return view('settings', ['user' => $user, 'addresses' => $user?->addresses()->latest('is_default')->get() ?? collect()]);
     }
 
     public function updateProfile(Request $request): RedirectResponse

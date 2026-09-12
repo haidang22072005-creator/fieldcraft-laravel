@@ -42,10 +42,14 @@ class PayOSPaymentController extends Controller
                         'refund_reason' => $payment->refund_reason ?: 'Thanh toán được ghi nhận sau khi đơn đã hủy.',
                     ]);
                     $order->update(['payment_status' => 'paid']);
+                    app(\App\Services\AdminNotificationService::class)->notifyOnce('payment_refund_required', 'Thanh toán thành công cần hoàn tiền', $order->number, ['refund_status' => 'required'], $order);
+                    app(\App\Services\ActivityLogService::class)->recordOnce('payment.success_refund_required', $order);
 
                     return [$order, false];
                 }
                 $order->update(['payment_status' => 'paid', 'status' => $order->status === 'pending_payment' ? 'pending' : $order->status]);
+                app(\App\Services\AdminNotificationService::class)->notifyOnce('payment_success', 'Thanh toán thành công', $order->number, [], $order);
+                app(\App\Services\ActivityLogService::class)->recordOnce('payment.success', $order);
                 $createWaybill = ! $order->ghn_order_code && $order->shipping_status === 'pending' && $order->to_district_id && $order->to_ward_code;
                 if ($createWaybill) $order->update(['shipping_status' => 'creating']);
                 return [$order, $createWaybill];

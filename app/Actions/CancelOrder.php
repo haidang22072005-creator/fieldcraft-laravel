@@ -48,7 +48,9 @@ class CancelOrder
 
             foreach ($lockedOrder->items as $item) {
                 if ($item->product_variant_id) {
-                    ProductVariant::query()->lockForUpdate()->find($item->product_variant_id)?->increment('stock', (int) $item->quantity);
+                    $variant = ProductVariant::query()->lockForUpdate()->find($item->product_variant_id);
+                    $variant?->increment('stock', (int) $item->quantity);
+                    if ($variant) app(\App\Services\AdminNotificationService::class)->syncImportantSizeLowStockForVariant($variant->fresh());
                 }
             }
 
@@ -65,6 +67,7 @@ class CancelOrder
                 'payment_status' => $paymentStatus,
                 'shipping_status' => 'cancelled',
             ]);
+            app(\App\Services\ActivityLogService::class)->record('order.cancelled', $lockedOrder);
 
             return $ghnOrderCode;
         });

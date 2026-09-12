@@ -127,6 +127,8 @@ class CheckoutController extends Controller
             $payment->update(['provider_order_id' => $providerOrderId]);
             return [$order, $payment];
         });
+        app(\App\Services\AdminNotificationService::class)->notify('new_order', 'Có đơn hàng mới', $order->number, [], $order);
+        app(\App\Services\ActivityLogService::class)->record('order.created', $order, ['payment_method' => $order->payment_method], $request->user()->id);
 
         if ($payment->provider === 'momo') {
             try {

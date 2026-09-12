@@ -80,4 +80,22 @@ return [
         'important_sizes' => ['40', '41'],
     ],
 
+    'loyalty' => [
+        'points_per_currency' => 10000,
+        'thresholds' => [
+            'ROOKIE' => 0,
+            'PLAYER' => 5000000,
+            'PRO' => 15000000,
+            'FIELDCRAFT ELITE' => 30000000,
+        ],
+        'inactive_days' => 180,
+        'abandoned_cart_hours' => 24,
+    ],
+
+    'football' => [
+        'provider' => env('FOOTBALL_PROVIDER'),
+        'endpoint' => env('FOOTBALL_API_ENDPOINT'),
+        'api_key' => env('FOOTBALL_API_KEY'),
+    ],
+
 ];

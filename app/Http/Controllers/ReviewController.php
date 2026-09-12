@@ -25,7 +25,7 @@ class ReviewController extends Controller
             'comment' => ['nullable', 'string', 'max:2000'],
         ]);
 
-        DB::transaction(function () use ($order, $orderItem, $request, $data): void {
+        $review = DB::transaction(function () use ($order, $orderItem, $request, $data): Review {
             $item = $order->items()->with('variant')->lockForUpdate()->findOrFail($orderItem->id);
             $productId = $item->variant?->product_id;
             if (! $productId) {
@@ -36,7 +36,7 @@ class ReviewController extends Controller
                 throw ValidationException::withMessages(['review' => 'Bạn đã đánh giá sản phẩm này trong đơn hàng.']);
             }
 
-            Review::query()->create([
+            return Review::query()->create([
                 'user_id' => $request->user()->id,
                 'product_id' => $productId,
                 'order_id' => $order->id,
@@ -46,6 +46,8 @@ class ReviewController extends Controller
                 'status' => 'pending',
             ]);
         });
+        app(\App\Services\AdminNotificationService::class)->notify('review_pending', 'Có đánh giá mới chờ duyệt', 'Review #'.$review->id, [], $review);
+        app(\App\Services\ActivityLogService::class)->record('review.created', $review, [], $request->user()->id);
 
         if ($request->expectsJson()) {
             return response()->json(['message' => 'Đánh giá đã được gửi và đang chờ duyệt.'], 201);

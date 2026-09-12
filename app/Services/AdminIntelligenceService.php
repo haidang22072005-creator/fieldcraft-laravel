@@ -16,6 +16,7 @@ use Illuminate\Support\Facades\DB;
 
 class AdminIntelligenceService
 {
+    public function __construct(private LoyaltyService $loyalty, private CustomerSegmentService $segments) {}
     public function dashboard(): array
     {
         $now = now();
@@ -204,6 +205,7 @@ class AdminIntelligenceService
         $size = $preferences->groupBy('size')->sortByDesc(fn (Collection $values) => $values->sum('quantity'))->keys()->first();
         $payment = Order::query()->where('user_id', $user->id)->select('payment_method', DB::raw('COUNT(*) AS aggregate'))->groupBy('payment_method')->orderByDesc('aggregate')->value('payment_method');
         $approvedReviewAverage = Review::query()->where('user_id', $user->id)->where('status', 'approved')->avg('rating');
+        $loyalty = $this->loyalty->profileFromMetrics(['completed_spend' => $summary->completed_spend, 'completed_order_count' => $summary->completed_orders, 'last_completed_purchase' => $summary->last_purchase, 'loyalty_points' => $user->loyaltyPointTransactions()->sum('points')]);
         $lastPurchase = $summary?->last_purchase ? Carbon::parse($summary->last_purchase)->toISOString() : null;
 
         return [
@@ -217,6 +219,8 @@ class AdminIntelligenceService
             'common_size' => $size,
             'common_payment_method' => $payment,
             'approved_review_average' => (int) ($approvedReviewAverage ?? 0),
+            'loyalty' => $loyalty,
+            'segments' => $this->segments->fromMetrics(['completed_order_count' => $summary->completed_orders, 'last_completed_purchase' => $summary->last_purchase], $loyalty['tier']),
             'teams' => TeamProfile::with('members')->where('user_id', $user->id)->latest()->get(),
         ];
     }
