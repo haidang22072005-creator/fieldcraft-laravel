@@ -17,7 +17,7 @@ class AccountController extends Controller
     {
         $filters = $request->validate(['q' => ['nullable', 'string', 'max:100'], 'role' => ['nullable', 'in:customer,admin,super-admin']]);
         $accounts = User::withCount('orders')->withSum(['orders as completed_spend' => fn ($q) => $q->where('status', 'completed')], 'total')
-            ->when($filters['q'] ?? null, fn ($q, $term) => $q->where(fn ($q) => $q->where('name', 'like', "%{$term}%")->orWhere('email', 'like', "%{$term}%")))
+            ->when($filters['q'] ?? null, fn ($q, $term) => $q->where(fn ($q) => $q->where('name', 'like', "%{$term}%")->orWhere('email', 'like', "%{$term}%")->orWhere('phone', 'like', "%{$term}%")))
             ->when($filters['role'] ?? null, fn ($q, $role) => $q->where('role', $role))->latest()->paginate(20)->withQueryString();
         return view('admin.accounts.index', compact('accounts', 'filters'));
     }

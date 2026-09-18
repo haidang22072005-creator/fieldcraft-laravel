@@ -10,12 +10,32 @@
 </div>
 
 <section class="panel">
+    @php
+        $paymentMethods = ['cod' => 'COD', 'momo' => 'MoMo', 'bank_qr' => 'Bank QR', 'payos' => 'payOS', 'online' => 'Online'];
+        $shippingOptions = [
+            'pending' => 'Chưa bàn giao', 'created' => 'Đã tạo đơn', 'ready_to_pick' => 'Chờ lấy hàng',
+            'picking' => 'Đang lấy hàng', 'delivering' => 'Đang giao', 'delivered' => 'Giao thành công',
+            'return' => 'Đang hoàn hàng', 'returned' => 'Đã hoàn hàng', 'cancelled' => 'Đã hủy',
+        ];
+    @endphp
+    <div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:16px">
+        <a class="btn small {{ empty($filters['status'] ?? null) ? 'lime' : '' }}" href="{{ route('admin.orders.index', request()->except('status','page')) }}">TẤT CẢ</a>
+        @foreach(\App\Support\OrderStatus::all() as $status)
+            <a class="btn small {{ ($filters['status'] ?? null) === $status ? 'lime' : '' }}" href="{{ route('admin.orders.index', array_merge(request()->except('page'), ['status' => $status])) }}">{{ \App\Support\UiLabels::orderStatus($status) }}</a>
+        @endforeach
+    </div>
     <form class="form-inline" method="GET">
-        <input name="q" value="{{ $filters['q'] ?? '' }}" placeholder="Mã đơn, tên, email, SĐT">
+        <input name="q" value="{{ $filters['q'] ?? '' }}" placeholder="Mã đơn, tên, email, SĐT, GHN, sản phẩm">
         <select name="status">
             <option value="">Mọi trạng thái</option>
-            @foreach(['pending', 'confirmed', 'packing', 'preparing', 'shipping', 'completed', 'cancelled'] as $value)
+            @foreach(\App\Support\OrderStatus::all() as $value)
                 <option value="{{ $value }}" @selected(($filters['status'] ?? '') === $value)>{{ \App\Support\UiLabels::orderStatus($value) }}</option>
+            @endforeach
+        </select>
+        <select name="payment_method">
+            <option value="">Mọi phương thức</option>
+            @foreach($paymentMethods as $value => $label)
+                <option value="{{ $value }}" @selected(($filters['payment_method'] ?? '') === $value)>{{ $label }}</option>
             @endforeach
         </select>
         <select name="payment_status">
@@ -35,8 +55,25 @@
                 <option value="{{ $value }}" @selected(($filters['payment_status'] ?? '') === $value)>{{ $label }}</option>
             @endforeach
         </select>
+        <select name="shipping_status">
+            <option value="">Mọi vận chuyển</option>
+            @foreach($shippingOptions as $value => $label)
+                <option value="{{ $value }}" @selected(($filters['shipping_status'] ?? '') === $value)>{{ $label }}</option>
+            @endforeach
+        </select>
         <input type="date" name="date_from" value="{{ $filters['date_from'] ?? '' }}" title="Từ ngày">
         <input type="date" name="date_to" value="{{ $filters['date_to'] ?? '' }}" title="Đến ngày">
+        <select name="sort" title="Sắp xếp">
+            <option value="newest" @selected(($filters['sort'] ?? 'newest') === 'newest')>Mới nhất</option>
+            <option value="oldest" @selected(($filters['sort'] ?? '') === 'oldest')>Cũ nhất</option>
+            <option value="total_desc" @selected(($filters['sort'] ?? '') === 'total_desc')>Tổng giảm dần</option>
+            <option value="total_asc" @selected(($filters['sort'] ?? '') === 'total_asc')>Tổng tăng dần</option>
+        </select>
+        <select name="per_page" title="Số dòng">
+            @foreach([25, 50, 100] as $pageSize)
+                <option value="{{ $pageSize }}" @selected((int) ($filters['per_page'] ?? 25) === $pageSize)>{{ $pageSize }} dòng</option>
+            @endforeach
+        </select>
         <button class="btn lime" type="submit">LỌC</button>
         <a class="btn" href="{{ route('admin.orders.index') }}">XOÁ LỌC</a>
     </form>

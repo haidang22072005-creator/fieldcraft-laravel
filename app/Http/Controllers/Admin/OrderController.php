@@ -16,6 +16,7 @@ use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Gate;
+use Illuminate\Validation\Rule;
 use Illuminate\Validation\ValidationException;
 use Illuminate\View\View;
 use App\Support\OrderStatus;
@@ -48,12 +49,44 @@ class OrderController extends Controller
 
     public function index(Request $request): View
     {
-        $filters = $request->validate(['q' => ['nullable', 'string', 'max:100'], 'status' => ['nullable', 'in:pending,confirmed,packing,preparing,shipping,completed,cancelled'], 'payment_method' => ['nullable', 'string', 'max:30'], 'payment_status' => ['nullable', 'string', 'max:30'], 'date_from' => ['nullable', 'date'], 'date_to' => ['nullable', 'date']]);
-        $orders = Order::with(['user', 'items'])->when($filters['q'] ?? null, function ($query, $term): void {
+        $filters = $request->validate([
+            'q' => ['nullable', 'string', 'max:100'],
+            'status' => ['nullable', Rule::in(OrderStatus::all())],
+            'payment_method' => ['nullable', 'in:cod,momo,bank_qr,payos,online'],
+            'payment_status' => ['nullable', 'string', 'max:30'],
+            'shipping_status' => ['nullable', 'string', 'max:40'],
+            'date_from' => ['nullable', 'date'],
+            'date_to' => ['nullable', 'date'],
+            'sort' => ['nullable', 'in:newest,oldest,total_desc,total_asc'],
+            'per_page' => ['nullable', 'integer', 'in:25,50,100'],
+        ]);
+        $sort = $filters['sort'] ?? 'newest';
+        $sorts = [
+            'newest' => ['created_at', 'desc'],
+            'oldest' => ['created_at', 'asc'],
+            'total_desc' => ['total', 'desc'],
+            'total_asc' => ['total', 'asc'],
+        ];
+        [$sortColumn, $sortDirection] = $sorts[$sort];
+        $orders = Order::with(['user', 'items', 'payments'])->when($filters['q'] ?? null, function ($query, $term): void {
             $query->where(function ($query) use ($term): void {
-                $query->where('number', 'like', "%{$term}%")->orWhere('recipient_name', 'like', "%{$term}%")->orWhere('recipient_phone', 'like', "%{$term}%")->orWhereHas('user', fn ($user) => $user->where('name', 'like', "%{$term}%")->orWhere('email', 'like', "%{$term}%"));
+                $query->where('number', 'like', "%{$term}%")
+                    ->orWhere('recipient_name', 'like', "%{$term}%")
+                    ->orWhere('recipient_phone', 'like', "%{$term}%")
+                    ->orWhere('ghn_order_code', 'like', "%{$term}%")
+                    ->orWhereHas('user', fn ($user) => $user->where('name', 'like', "%{$term}%")->orWhere('email', 'like', "%{$term}%")->orWhere('phone', 'like', "%{$term}%"))
+                    ->orWhereHas('items', fn ($items) => $items->where('product_name', 'like', "%{$term}%"));
             });
-        })->when($filters['status'] ?? null, fn ($query, $status) => $query->where('status', $status))->when($filters['payment_method'] ?? null, fn ($query, $v) => $query->where('payment_method', $v))->when($filters['payment_status'] ?? null, fn ($query, $v) => $query->where('payment_status', $v))->when($filters['date_from'] ?? null, fn ($query, $v) => $query->whereDate('created_at', '>=', $v))->when($filters['date_to'] ?? null, fn ($query, $v) => $query->whereDate('created_at', '<=', $v))->latest()->paginate(20)->withQueryString();
+        })->when($filters['status'] ?? null, fn ($query, $status) => $query->where('status', $status))
+            ->when($filters['payment_method'] ?? null, fn ($query, $v) => $query->where('payment_method', $v))
+            ->when($filters['payment_status'] ?? null, fn ($query, $v) => $query->where('payment_status', $v))
+            ->when($filters['date_from'] ?? null, fn ($query, $v) => $query->whereDate('created_at', '>=', $v))
+            ->when($filters['date_to'] ?? null, fn ($query, $v) => $query->whereDate('created_at', '<=', $v))
+            ->when($filters['shipping_status'] ?? null, fn ($query, $v) => $query->where('shipping_status', $v))
+            ->orderBy($sortColumn, $sortDirection)
+            ->orderBy('id', $sortDirection)
+            ->paginate((int) ($filters['per_page'] ?? 25))
+            ->withQueryString();
 
         return view('admin.orders.index', compact('orders', 'filters'));
     }

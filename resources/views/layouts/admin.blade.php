@@ -1282,6 +1282,10 @@
                     <span class="nav-icon">💳</span>
                     <span>Doanh thu & Tài chính</span>
                 </a>
+                <a class="nav-link {{ request()->routeIs('admin.reports.*') ? 'active' : '' }}" href="{{ route('admin.reports.index') }}">
+                    <span class="nav-icon">📊</span>
+                    <span>Báo cáo & Phân tích</span>
+                </a>
                 <a class="nav-link {{ request()->routeIs('admin.accounts.*') ? 'active' : '' }}" href="{{ route('admin.accounts.index') }}">
                     <span class="nav-icon">◎</span>
                     <span>Tài khoản quản trị</span>

@@ -1,11 +1,11 @@
 @extends('layouts.admin')
 
 @section('content')
-<div class="crumb">HỆ THỐNG / TÀI KHOẢN & PHÂN QUYỀN</div>
+<div class="crumb">HỆ THỐNG / NGƯỜI DÙNG & PHÂN QUYỀN</div>
 <div class="topline">
     <div>
-        <h1 style="margin-bottom:4px">Tài khoản & Phân quyền</h1>
-        <div class="muted">Quản trị nhân sự, vai trò quyền hạn và danh sách người dùng hệ thống</div>
+        <h1 style="margin-bottom:4px">Người dùng & Phân quyền</h1>
+        <div class="muted">Quản trị tài khoản, vai trò, trạng thái và hồ sơ khách hàng</div>
     </div>
 </div>
 
@@ -32,7 +32,7 @@
         ];
     @endphp
     <form class="form-inline" method="GET">
-        <input name="q" value="{{ $filters['q'] ?? '' }}" placeholder="Tìm theo tên hoặc email">
+        <input name="q" value="{{ $filters['q'] ?? '' }}" placeholder="Tìm theo tên, email hoặc SĐT">
         <select name="role">
             <option value="">Mọi phân quyền</option>
             @foreach(['super-admin' => 'Quản trị tối cao', 'admin' => 'Quản trị viên', 'customer' => 'Khách hàng'] as $roleKey => $roleLabel)
@@ -48,6 +48,7 @@
             <thead>
                 <tr>
                     <th>TÀI KHOẢN</th>
+                    <th>LIÊN HỆ / TRẠNG THÁI</th>
                     <th>VAI TRÒ</th>
                     <th>ĐƠN HÀNG</th>
                     <th>CHI TIÊU HOÀN TẤT</th>
@@ -59,8 +60,26 @@
                 @forelse($accounts as $account)
                     <tr>
                         <td>
-                            <b>{{ $account->name }}</b>
+                            @php
+                                $nameParts = preg_split('/\s+/', trim((string) $account->name), -1, PREG_SPLIT_NO_EMPTY);
+                                $initials = collect(array_slice($nameParts, -2))->map(fn ($part) => mb_substr($part, 0, 1))->implode('');
+                            @endphp
+                            <div style="display:flex;align-items:center;gap:10px">
+                                @if($account->avatar)
+                                    <img src="{{ asset('storage/'.$account->avatar) }}" alt="{{ $account->name }}" style="width:34px;height:34px;border-radius:50%;object-fit:cover;border:1px solid var(--lime);background:#132a1e">
+                                @else
+                                    <div style="width:34px;height:34px;border-radius:50%;display:grid;place-items:center;background:#1b3e2b;color:var(--lime);font-weight:800">{{ $initials ?: '?' }}</div>
+                                @endif
+                                <b>{{ $account->name }}</b>
+                            </div>
                             <div class="muted" style="font-size:0.85rem">{{ $account->email }}</div>
+                        </td>
+                        <td>
+                            <div class="mono">{{ $account->phone ?: 'Chưa có SĐT' }}</div>
+                            <div class="muted" style="font-size:0.8rem">{{ $account->email_verified_at ? 'Đã xác thực' : 'Chưa xác thực' }}</div>
+                            @if($account->role === 'customer')
+                                <a class="lime-link" style="font-size:0.8rem" href="{{ route('admin.customers.show', $account) }}">MỞ CUSTOMER 360</a>
+                            @endif
                         </td>
                         <td>
                             <span class="status {{ $account->role === 'super-admin' ? 'completed' : ($account->role === 'admin' ? 'lime' : '') }}" style="{{ $account->role === 'customer' ? 'background:#132a1e;color:var(--lime)' : '' }}">
@@ -88,7 +107,7 @@
                     </tr>
                 @empty
                     <tr>
-                        <td colspan="6" class="muted" style="text-align:center;padding:24px">Chưa có tài khoản nào.</td>
+                        <td colspan="7" class="muted" style="text-align:center;padding:24px">Chưa có tài khoản nào.</td>
                     </tr>
                 @endforelse
             </tbody>

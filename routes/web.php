@@ -5,6 +5,7 @@ use App\Http\Controllers\Admin\CouponController;
 use App\Http\Controllers\Admin\CustomerController;
 use App\Http\Controllers\Admin\IntelligenceController;
 use App\Http\Controllers\Admin\OrderController;
+use App\Http\Controllers\Admin\ReportController;
 use App\Http\Controllers\Admin\ProductController;
 use App\Http\Controllers\Admin\ReviewController as AdminReviewController;
 use App\Http\Controllers\Admin\RefundController;
@@ -160,6 +161,10 @@ Route::middleware(['auth', 'role:super-admin,admin'])->prefix('admin')->name('ad
     Route::get('/accounts', [AccountController::class, 'index'])->name('accounts.index');
     Route::post('/accounts/staff', [AccountController::class, 'store'])->middleware('role:super-admin')->name('accounts.store');
     Route::patch('/accounts/{user}/role', [AccountController::class, 'updateRole'])->middleware('role:super-admin')->name('accounts.role');
+    Route::prefix('reports')->name('reports.')->group(function () {
+        Route::get('/', [ReportController::class, 'index'])->name('index');
+        Route::get('/charts', [ReportController::class, 'charts'])->name('charts');
+    });
     Route::prefix('intelligence')->name('intelligence.')->group(function () {
         Route::get('/dashboard', [IntelligenceController::class, 'dashboard'])->name('dashboard');
         Route::get('/revenue', [IntelligenceController::class, 'revenue'])->name('revenue');
