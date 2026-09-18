@@ -189,6 +189,8 @@ class LivechatTest extends TestCase
 
         $this->assertStringContainsString("input[name='_token']", str_replace('"', "'", $component));
         $this->assertStringContainsString("X-CSRF-TOKEN", $component);
+        $this->assertStringContainsString('if (!token)', $component);
+        $this->assertStringContainsString('thiếu mã CSRF', $component);
         $this->assertStringContainsString('drawerBackdrop', $storefront->getContent());
         $this->assertStringContainsString('MutationObserver', $component);
         $this->assertStringContainsString('is-cart-open', $component);

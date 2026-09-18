@@ -137,7 +137,12 @@
         sendButton.disabled = true;
         setStatus('');
         try {
-            const response = await fetch(urls.store, { method: 'POST', headers: { 'Content-Type': 'application/json', Accept: 'application/json', 'X-CSRF-TOKEN': csrfToken() }, body: JSON.stringify({ content }) });
+            const token = csrfToken();
+            if (!token) {
+                setStatus('Không thể gửi tin nhắn vì thiếu mã CSRF. Hãy tải lại trang.');
+                return;
+            }
+            const response = await fetch(urls.store, { method: 'POST', headers: { 'Content-Type': 'application/json', Accept: 'application/json', 'X-CSRF-TOKEN': token }, body: JSON.stringify({ content }) });
             const payload = await response.json().catch(() => ({}));
             if (!response.ok) throw new Error(payload.message || 'Không thể gửi tin nhắn.');
             renderMessages(Array.isArray(payload.data) ? payload.data : []);
