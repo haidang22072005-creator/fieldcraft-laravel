@@ -4,7 +4,6 @@ namespace App\Services;
 
 use App\Models\Message;
 use App\Models\User;
-use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Collection;
 
 class ChatMessageService
@@ -29,7 +28,7 @@ class ChatMessageService
         return $this->boundedConversation($customer, $adminIds);
     }
 
-    public function adminCustomers(): LengthAwarePaginator
+    public function adminCustomers(): Collection
     {
         $adminIds = $this->adminIds();
         $lastMessage = Message::query()
@@ -57,7 +56,8 @@ class ChatMessageService
             ->selectSub($lastMessageAt, 'last_chat_message_at')
             ->withCount(['sentMessages as unread_messages_count' => fn ($messages) => $messages->where('is_read', false)->whereIn('receiver_id', $adminIds)])
             ->orderByDesc('last_chat_message_at')
-            ->paginate(30);
+            ->limit(self::MAX_HISTORY)
+            ->get();
     }
 
     public function sendCustomerMessage(User $customer, string $content): ?Message

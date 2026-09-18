@@ -116,7 +116,7 @@ Route::middleware(['auth', 'verified'])->prefix('support')->name('support.')->gr
     Route::get('/tickets/{supportTicket}', [SupportTicketController::class, 'show'])->name('tickets.show');
     Route::post('/tickets/{supportTicket}/messages', [SupportTicketController::class, 'reply'])->name('tickets.reply');
 });
-Route::middleware(['auth', 'verified'])->prefix('chat')->name('chat.')->group(function () {
+Route::middleware(['auth', 'verified', 'role:customer'])->prefix('chat')->name('chat.')->group(function () {
     Route::get('/messages', [ChatMessageController::class, 'index'])->name('messages.index');
     Route::post('/messages', [ChatMessageController::class, 'store'])->name('messages.store');
 });

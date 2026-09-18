@@ -33,7 +33,7 @@
     <div>
         <div class="eyebrow">CUSTOMER COMMUNICATION</div>
         <h1 style="margin-top:6px">CHAT NHANH</h1>
-        <p style="margin-top:6px;color:var(--text-muted)">Trao đổi trực tiếp với khách hàng. Yêu cầu hỗ trợ vẫn nằm riêng trong Support Center.</p>
+        <p style="margin-top:6px;color:var(--text-muted)">Trao đổi trực tiếp với khách hàng. Yêu cầu hỗ trợ vẫn nằm riêng trong Support Center. Hiển thị tối đa 100 cuộc trò chuyện gần nhất; trạng thái chưa đọc dùng chung cho các quản trị viên.</p>
     </div>
 </div>
 
@@ -64,7 +64,7 @@
     const sendButton = document.getElementById('chat-reply-send');
     const currentAdminId = @json(auth()->id());
     const urls = { list: @json(route('admin.chat.customers.index')), show: @json(route('admin.chat.customers.messages', ['user' => '__CUSTOMER__'])), store: @json(route('admin.chat.customers.messages.store', ['user' => '__CUSTOMER__'])) };
-    const state = { selectedId: null, listRequestActive: false, conversationRequestActive: false, sendActive: false, pollActive: false };
+    const state = { selectedId: null, customers: [], listRequestActive: false, conversationRequestActive: false, sendActive: false, pollActive: false };
 
     function setStatus(message) { statusNode.textContent = message || ''; }
     function endpoint(template, customerId) { return template.replace('__CUSTOMER__', encodeURIComponent(String(customerId))); }
@@ -128,10 +128,11 @@
             const payload = await response.json().catch(() => ({}));
             if (!response.ok) throw new Error(payload.message || 'Không thể tải danh sách khách hàng.');
             const customers = Array.isArray(payload.data) ? payload.data : [];
-            renderCustomers(customers);
+            state.customers = customers;
+            renderCustomers(state.customers);
             const selected = customers.find(customer => Number(customer.id) === Number(state.selectedId));
             if (!selected && customers[0]) await selectCustomer(customers[0]);
-            return customers;
+            return state.customers;
         } catch (error) {
             setStatus(error.message || 'Không thể tải danh sách khách hàng.');
             return [];
@@ -147,16 +148,23 @@
             if (!response.ok) throw new Error(payload.message || 'Không thể tải cuộc trò chuyện.');
             renderConversation(Array.isArray(payload.data) ? payload.data : []);
             setStatus('');
+            return true;
         } catch (error) { setStatus(error.message || 'Không thể tải cuộc trò chuyện.'); }
         finally { state.conversationRequestActive = false; }
+        return false;
     }
 
     async function selectCustomer(customer) {
         state.selectedId = customer.id;
         titleNode.textContent = customer.name || 'Khách hàng';
         sendButton.disabled = false;
-        renderCustomers(Array.from(listNode.querySelectorAll('[data-customer-id]')).map(button => ({ id: button.dataset.customerId, name: button.querySelector('.livechat-customer-name')?.textContent })));
-        await loadConversation();
+        renderCustomers(state.customers);
+        if (await loadConversation()) {
+            state.customers = state.customers.map(item => Number(item.id) === Number(state.selectedId)
+                ? { ...item, unread_messages_count: 0 }
+                : item);
+            renderCustomers(state.customers);
+        }
     }
 
     async function refresh() {

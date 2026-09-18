@@ -1,7 +1,8 @@
 @if(auth()->check() && auth()->user()->role === 'customer')
 <style>
-    #fieldcraft-livechat-button { position:fixed; right:22px; bottom:22px; z-index:120; border:1px solid var(--neon-green); border-radius:999px; padding:12px 16px; background:var(--neon-green); color:#07110d; font-weight:800; box-shadow:0 12px 28px rgba(0,0,0,.35); cursor:pointer; }
+    #fieldcraft-livechat-button { position:fixed; right:22px; bottom:22px; z-index:120; border:1px solid var(--neon-green); border-radius:999px; padding:12px 16px; background:var(--neon-green); color:#07110d; font-weight:800; box-shadow:0 12px 28px rgba(0,0,0,.35); cursor:pointer; transition:opacity .18s, transform .18s, visibility .18s; }
     #fieldcraft-livechat-panel { position:fixed; right:22px; bottom:78px; z-index:121; display:none; width:min(380px,calc(100vw - 28px)); height:min(560px,calc(100vh - 110px)); overflow:hidden; flex-direction:column; border:1px solid var(--border-panel); border-radius:14px; background:var(--bg-panel); color:var(--text-main); box-shadow:0 20px 60px rgba(0,0,0,.5); }
+    #fieldcraft-livechat-button.is-cart-open, #fieldcraft-livechat-panel.is-cart-open { opacity:0; pointer-events:none; transform:translateY(16px); visibility:hidden; }
     #fieldcraft-livechat-panel.is-open { display:flex; }
     .fieldcraft-livechat-head { display:flex; align-items:center; justify-content:space-between; gap:12px; padding:15px 16px; border-bottom:1px solid var(--border-panel); }
     .fieldcraft-livechat-head strong { letter-spacing:.08em; font-size:12px; }
@@ -47,6 +48,25 @@
     const currentUserId = @json(auth()->id());
     const urls = { index: @json(route('chat.messages.index')), store: @json(route('chat.messages.store')) };
     const state = { open: false, requestActive: false, timer: null };
+    const cartDrawer = document.getElementById('cartDrawer');
+    const drawerBackdrop = document.getElementById('drawerBackdrop');
+
+    function csrfToken() {
+        return document.querySelector('meta[name="csrf-token"]')?.content
+            || document.querySelector('input[name="_token"]')?.value
+            || '';
+    }
+
+    function syncCartVisibility() {
+        const cartOpen = cartDrawer?.classList.contains('show') || drawerBackdrop?.classList.contains('show');
+        button.classList.toggle('is-cart-open', Boolean(cartOpen));
+        panel.classList.toggle('is-cart-open', Boolean(cartOpen));
+    }
+
+    [cartDrawer, drawerBackdrop].filter(Boolean).forEach(node => {
+        new MutationObserver(syncCartVisibility).observe(node, { attributes: true, attributeFilter: ['class'] });
+    });
+    syncCartVisibility();
 
     function setStatus(message) { statusNode.textContent = message || ''; }
     function showLoading() {
@@ -117,7 +137,7 @@
         sendButton.disabled = true;
         setStatus('');
         try {
-            const response = await fetch(urls.store, { method: 'POST', headers: { 'Content-Type': 'application/json', Accept: 'application/json', 'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]')?.content || '' }, body: JSON.stringify({ content }) });
+            const response = await fetch(urls.store, { method: 'POST', headers: { 'Content-Type': 'application/json', Accept: 'application/json', 'X-CSRF-TOKEN': csrfToken() }, body: JSON.stringify({ content }) });
             const payload = await response.json().catch(() => ({}));
             if (!response.ok) throw new Error(payload.message || 'Không thể gửi tin nhắn.');
             renderMessages(Array.isArray(payload.data) ? payload.data : []);

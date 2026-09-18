@@ -138,18 +138,63 @@ class LivechatTest extends TestCase
         $this->actingAs($customer)->postJson(route('chat.messages.store'), ['content' => 'Xin trợ giúp'])->assertStatus(503)->assertJsonPath('message', 'Hiện chưa có quản trị viên trực tuyến.');
     }
 
+    public function test_customer_chat_endpoints_reject_admin_users(): void
+    {
+        $admin = User::factory()->create(['role' => 'admin']);
+
+        $this->actingAs($admin)->getJson(route('chat.messages.index'))->assertForbidden();
+        $this->actingAs($admin)->postJson(route('chat.messages.store'), ['content' => 'Không được gửi'])->assertForbidden();
+    }
+
+    public function test_admin_customer_list_is_bounded_without_hiding_the_next_page_of_customers(): void
+    {
+        $admin = User::factory()->create(['role' => 'admin']);
+        $customers = User::factory()->count(31)->create(['role' => 'customer']);
+
+        foreach ($customers as $customer) {
+            Message::create([
+                'sender_id' => $customer->id,
+                'receiver_id' => $admin->id,
+                'content' => 'Xin chào '.$customer->id,
+                'is_read' => false,
+            ]);
+        }
+
+        $response = $this->actingAs($admin)->getJson(route('admin.chat.customers.index'))->assertOk();
+
+        $this->assertCount(31, $response->json('data'));
+        $this->assertLessThanOrEqual(100, count($response->json('data')));
+    }
+
     public function test_customer_surfaces_include_safe_livechat_popup_contract(): void
     {
         $customer = User::factory()->create(['role' => 'customer']);
 
         foreach ([route('store.home'), route('settings')] as $url) {
             $response = $this->actingAs($customer)->get($url)->assertOk();
+            $response->assertSee('<meta name="csrf-token"', false);
             $response->assertSee('HỖ TRỢ TRỰC TUYẾN', false);
             $response->assertSee('FIELDCRAFT SUPPORT', false);
             $response->assertSee('fieldcraft-livechat-panel', false);
             $response->assertSee('textContent', false);
             $response->assertSee('createElement', false);
         }
+    }
+
+    public function test_customer_livechat_has_csrf_fallback_and_hides_behind_open_cart(): void
+    {
+        $customer = User::factory()->create(['role' => 'customer']);
+        $component = file_get_contents(resource_path('views/components/livechat.blade.php'));
+        $storefront = $this->actingAs($customer)->get(route('store.home'))->assertOk();
+
+        $this->assertStringContainsString("input[name='_token']", str_replace('"', "'", $component));
+        $this->assertStringContainsString("X-CSRF-TOKEN", $component);
+        $this->assertStringContainsString('drawerBackdrop', $storefront->getContent());
+        $this->assertStringContainsString('MutationObserver', $component);
+        $this->assertStringContainsString('is-cart-open', $component);
+        $this->assertStringContainsString('pointer-events:none', str_replace(' ', '', $component));
+        $this->assertStringContainsString('@media (max-width:560px)', $component);
+        $this->assertStringContainsString('bottom:14px', $component);
     }
 
     public function test_admin_chat_page_is_role_protected_separate_and_safe(): void
@@ -166,6 +211,11 @@ class LivechatTest extends TestCase
         $response->assertSee('textContent', false);
         $response->assertSee('createElement', false);
         $response->assertSee('@media', false);
+        $response->assertSee('state.customers', false);
+        $response->assertSee('unread_messages_count', false);
+        $response->assertSee('last_message_content', false);
+        $response->assertSee('last_chat_message_at', false);
+        $response->assertDontSee('Array.from(listNode.querySelectorAll', false);
         $response->assertDontSee('innerHTML', false);
     }
 

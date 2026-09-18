@@ -18,7 +18,7 @@ class ChatMessageController extends Controller
 
     public function customers(ChatMessageService $chat): JsonResponse
     {
-        return response()->json($chat->adminCustomers());
+        return response()->json(['data' => $chat->adminCustomers()]);
     }
 
     public function show(User $user, ChatMessageService $chat): JsonResponse
