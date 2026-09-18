@@ -48,8 +48,8 @@ class SupportTicketController extends Controller
         return $ticket->load([
             'user',
             'order',
-            'messages' => fn ($query) => $query->with('sender')->latest()->limit(100),
-        ]);
+            'messages' => fn ($query) => $query->with('sender')->orderByDesc('created_at')->orderByDesc('id')->limit(100),
+        ])->sortMessagesChronologically();
     }
 
     public function status(Request $request, SupportTicket $supportTicket, ActivityLogService $activity): JsonResponse

@@ -19,8 +19,9 @@
     $supportTicketsAll = \App\Models\SupportTicket::with([
         'user',
         'order',
-        'messages' => fn ($query) => $query->with('sender')->latest()->limit(100),
+        'messages' => fn ($query) => $query->with('sender')->orderByDesc('created_at')->orderByDesc('id')->limit(100),
     ])->latest('last_message_at')->take(50)->get();
+    $supportTicketsAll->each->sortMessagesChronologically();
     $openSupportTicketsCount = \App\Models\SupportTicket::whereIn('status', ['open', 'in_progress'])->count();
     $supportCategoryLabels = [
         'order' => 'Đơn hàng',

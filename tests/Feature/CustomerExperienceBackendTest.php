@@ -107,6 +107,49 @@ class CustomerExperienceBackendTest extends TestCase
         $this->actingAs($customer)->postJson(route('support.tickets.reply', $ticket), ['message' => 'Thanks'])->assertOk();
     }
 
+    public function test_bounded_support_messages_are_newest_hundred_in_chronological_order(): void
+    {
+        $customer = User::factory()->create(['role' => 'customer']);
+        $admin = User::factory()->create(['role' => 'admin']);
+        $base = now()->startOfSecond();
+        $ticket = SupportTicket::create([
+            'user_id' => $customer->id,
+            'subject' => 'Message ordering',
+            'category' => 'other',
+            'status' => 'open',
+            'last_message_at' => $base->copy()->addSeconds(105),
+        ]);
+
+        foreach (range(1, 105) as $number) {
+            $ticket->messages()->create([
+                'sender_user_id' => $customer->id,
+                'sender_role' => 'customer',
+                'message' => 'Message '.$number,
+                'created_at' => $base->copy()->addSeconds($number),
+                'updated_at' => $base->copy()->addSeconds($number),
+            ]);
+        }
+
+        $customerMessages = $this->actingAs($customer)
+            ->getJson(route('support.tickets.show', $ticket))
+            ->assertOk()
+            ->json('data.messages');
+        $adminMessages = $this->actingAs($admin)
+            ->getJson(route('admin.support.tickets.show', $ticket))
+            ->assertOk()
+            ->json('data.messages');
+        $dashboard = $this->actingAs($admin)->get(route('admin.dashboard'))->assertOk();
+
+        foreach ([$customerMessages, $adminMessages] as $messages) {
+            $this->assertCount(100, $messages);
+            $this->assertSame('Message 6', $messages[0]['message']);
+            $this->assertSame('Message 105', $messages[99]['message']);
+            $this->assertSame(range(6, 105), array_map(fn (array $message): int => (int) str_replace('Message ', '', $message['message']), $messages));
+        }
+
+        $dashboard->assertSeeInOrder(['Message 6', 'Message 105']);
+    }
+
     public function test_customer360_includes_bounded_crm_payload_and_customization_is_explicit_and_owned(): void
     {
         $customer = User::factory()->create(['role' => 'customer']);
