@@ -13,6 +13,7 @@ use App\Http\Controllers\Admin\AbandonedCartController;
 use App\Http\Controllers\Admin\ActivityController;
 use App\Http\Controllers\Admin\BootPassportController as AdminBootPassportController;
 use App\Http\Controllers\Admin\CampaignController;
+use App\Http\Controllers\Admin\ChatMessageController as AdminChatMessageController;
 use App\Http\Controllers\Admin\CrossSellController;
 use App\Http\Controllers\Admin\GlobalSearchController;
 use App\Http\Controllers\Admin\KanbanController;
@@ -23,6 +24,7 @@ use App\Http\Controllers\Admin\ShippingHubController;
 use App\Http\Controllers\Admin\TrendController;
 use App\Http\Controllers\AuthController;
 use App\Http\Controllers\CartController;
+use App\Http\Controllers\ChatMessageController;
 use App\Http\Controllers\CheckoutController;
 use App\Http\Controllers\CustomerVoucherController;
 use App\Http\Controllers\CustomizationJobController;
@@ -114,6 +116,10 @@ Route::middleware(['auth', 'verified'])->prefix('support')->name('support.')->gr
     Route::get('/tickets/{supportTicket}', [SupportTicketController::class, 'show'])->name('tickets.show');
     Route::post('/tickets/{supportTicket}/messages', [SupportTicketController::class, 'reply'])->name('tickets.reply');
 });
+Route::middleware(['auth', 'verified'])->prefix('chat')->name('chat.')->group(function () {
+    Route::get('/messages', [ChatMessageController::class, 'index'])->name('messages.index');
+    Route::post('/messages', [ChatMessageController::class, 'store'])->name('messages.store');
+});
 Route::middleware(['auth', 'verified'])->prefix('notifications')->name('notifications.')->group(function () {
     Route::get('/', [CustomerNotificationController::class, 'index'])->name('index');
     Route::patch('/{notification}/read', [CustomerNotificationController::class, 'read'])->name('read');
@@ -130,6 +136,10 @@ Route::middleware(['auth', 'verified'])->prefix('purchases')->name('purchases.')
 
 Route::middleware(['auth', 'role:super-admin,admin'])->prefix('admin')->name('admin.')->group(function () {
     Route::get('/', [OrderController::class, 'dashboard'])->name('dashboard');
+    Route::get('/chat', [AdminChatMessageController::class, 'page'])->name('chat');
+    Route::get('/chat/customers', [AdminChatMessageController::class, 'customers'])->name('chat.customers.index');
+    Route::get('/chat/customers/{user}/messages', [AdminChatMessageController::class, 'show'])->name('chat.customers.messages');
+    Route::post('/chat/customers/{user}/messages', [AdminChatMessageController::class, 'reply'])->name('chat.customers.messages.store');
     Route::resource('products', ProductController::class)->except('show');
     Route::resource('coupons', CouponController::class)->except('show');
     Route::get('/customers', [CustomerController::class, 'index'])->name('customers.index');

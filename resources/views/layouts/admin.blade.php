@@ -1153,6 +1153,7 @@
             $pendingReviewsCount = \App\Models\Review::where('status', 'pending')->count();
             $lowStockCount = \App\Models\ProductVariant::where('stock', '<=', 5)->count();
             $openTicketsCount = \App\Models\SupportTicket::whereIn('status', ['open', 'in_progress'])->count();
+            $unreadChatCount = \App\Models\Message::where('is_read', false)->whereHas('sender', fn ($query) => $query->where('role', 'customer'))->whereHas('receiver', fn ($query) => $query->whereIn('role', ['admin', 'super-admin']))->count();
             $currentAdminId = auth()->id();
             $unreadNotificationsCount = $currentAdminId ? \App\Models\AdminNotification::where('user_id', $currentAdminId)->whereNull('read_at')->count() : 0;
             $realNotifications = $currentAdminId ? \App\Models\AdminNotification::where('user_id', $currentAdminId)->latest()->take(15)->get() : collect();
@@ -1195,6 +1196,13 @@
                     <span>Hỗ trợ khách hàng</span>
                     @if($openTicketsCount > 0)
                         <span class="nav-badge warning">{{ $openTicketsCount }}</span>
+                    @endif
+                </a>
+                <a class="nav-link {{ request()->routeIs('admin.chat*') ? 'active' : '' }}" href="{{ route('admin.chat') }}">
+                    <span class="nav-icon">💬</span>
+                    <span>Chat nhanh</span>
+                    @if($unreadChatCount > 0)
+                        <span class="nav-badge info">{{ $unreadChatCount }}</span>
                     @endif
                 </a>
             </div>

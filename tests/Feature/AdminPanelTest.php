@@ -51,6 +51,17 @@ class AdminPanelTest extends TestCase
             ->assertJsonPath('data.pending.0.id', $order->id);
     }
 
+    public function test_admin_navigation_links_to_html_chat_page(): void
+    {
+        $admin = User::factory()->create(['role' => 'admin']);
+
+        $this->actingAs($admin)
+            ->get(route('admin.dashboard'))
+            ->assertOk()
+            ->assertSee('Chat nhanh', false)
+            ->assertSee('href="'.route('admin.chat').'"', false);
+    }
+
     public function test_admin_support_payload_does_not_emit_raw_customer_markup(): void
     {
         $admin = User::factory()->create(['role' => 'admin']);

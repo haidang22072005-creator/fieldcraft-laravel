@@ -2076,5 +2076,6 @@
 
         renderCart();
     </script>
+    @include('components.livechat')
 </body>
 </html>
