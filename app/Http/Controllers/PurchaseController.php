@@ -132,6 +132,7 @@ class PurchaseController extends Controller
         $order->load([
             'items.variant.product.images',
             'items.review',
+            'items.customizationJobs',
             'payments',
             'coupon',
             'address',

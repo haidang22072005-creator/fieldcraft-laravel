@@ -14,10 +14,29 @@
     $inventoryProducts = app(\App\Services\AdminIntelligenceService::class)->inventoryMatrix();
     $restockItems = app(\App\Services\AdminIntelligenceService::class)->restockRadar();
     $performanceProducts = app(\App\Services\AdminIntelligenceService::class)->productPerformance();
-    $teamsList = \App\Models\TeamProfile::with(['members', 'owner'])->latest()->get();
+    $teamsList = \App\Models\TeamProfile::with(['members', 'owner'])->latest()->take(50)->get();
     $customizationJobs = \App\Models\CustomizationJob::with(['order.user', 'orderItem'])->latest()->take(25)->get();
-    $supportTicketsAll = \App\Models\SupportTicket::with(['user', 'order', 'messages.sender'])->latest('last_message_at')->take(50)->get();
+    $supportTicketsAll = \App\Models\SupportTicket::with([
+        'user',
+        'order',
+        'messages' => fn ($query) => $query->with('sender')->latest()->limit(100),
+    ])->latest('last_message_at')->take(50)->get();
     $openSupportTicketsCount = \App\Models\SupportTicket::whereIn('status', ['open', 'in_progress'])->count();
+    $supportCategoryLabels = [
+        'order' => 'Đơn hàng',
+        'payment' => 'Thanh toán',
+        'shipping' => 'Vận chuyển',
+        'product' => 'Sản phẩm',
+        'refund' => 'Hoàn tiền',
+        'account' => 'Tài khoản',
+        'other' => 'Khác',
+    ];
+    $supportStatusMeta = [
+        'open' => ['label' => 'Mới', 'class' => 'pending'],
+        'in_progress' => ['label' => 'Đang xử lý', 'class' => 'shipping'],
+        'resolved' => ['label' => 'Đã giải quyết', 'class' => 'completed'],
+        'closed' => ['label' => 'Đã đóng', 'class' => 'cancelled'],
+    ];
 
     // Real Order Kanban data
     $kanbanOrders = \App\Models\Order::with(['user', 'items.variant.product'])->latest()->take(50)->get();
@@ -528,6 +547,16 @@
         font: 700 13px/1 'DM Mono', monospace;
         color: var(--lime);
     }
+    .support-hub-grid {
+        display: grid;
+        grid-template-columns: minmax(280px, 380px) minmax(0, 1fr);
+        gap: 20px;
+        align-items: start;
+    }
+    .support-list-panel,
+    .support-detail-panel {
+        min-width: 0;
+    }
 
     /* ── Responsive ── */
     @media (max-width: 1200px) {
@@ -536,6 +565,10 @@
     @media (max-width: 768px) {
         .kpi-grid { grid-template-columns: 1fr; }
         .alert-cards-grid { grid-template-columns: 1fr; }
+        .support-hub-grid { grid-template-columns: 1fr; }
+        .support-list-panel { height: 420px !important; }
+        .support-detail-panel { height: 620px !important; }
+        #ticketDetailHeader h3 { overflow-wrap: anywhere; }
     }
 </style>
 
@@ -1509,16 +1542,16 @@
             </div>
         </div>
 
-        <div style="display:grid;grid-template-columns:380px 1fr;gap:20px;align-items:start">
+        <div class="support-hub-grid">
             {{-- Left Column: Ticket List & Filter --}}
-            <div style="background:var(--bg-panel-sub);border:1px solid var(--border-panel);border-radius:10px;padding:16px;display:flex;flex-direction:column;gap:12px;height:720px">
+            <div class="support-list-panel" style="background:var(--bg-panel-sub);border:1px solid var(--border-panel);border-radius:10px;padding:16px;display:flex;flex-direction:column;gap:12px;height:720px">
                 {{-- Status Filter Buttons --}}
                 <div style="display:flex;gap:6px;flex-wrap:wrap">
                     <button type="button" class="btn small support-filter-btn active" data-filter="all" onclick="filterSupportTickets('all')">
                         Tất cả ({{ $supportTicketsAll->count() }})
                     </button>
                     <button type="button" class="btn small support-filter-btn" data-filter="open" onclick="filterSupportTickets('open')">
-                        Mới mở ({{ $supportTicketsAll->where('status', 'open')->count() }})
+                        Mới ({{ $supportTicketsAll->where('status', 'open')->count() }})
                     </button>
                     <button type="button" class="btn small support-filter-btn" data-filter="in_progress" onclick="filterSupportTickets('in_progress')">
                         Đang xử lý ({{ $supportTicketsAll->where('status', 'in_progress')->count() }})
@@ -1540,29 +1573,8 @@
                 <div id="supportTicketsList" style="flex:1;overflow-y:auto;display:flex;flex-direction:column;gap:8px;padding-right:4px">
                     @forelse($supportTicketsAll as $st)
                         @php
-                            $catLabel = match($st->category) {
-                                'order' => 'Đơn hàng',
-                                'payment' => 'Thanh toán',
-                                'shipping' => 'Vận chuyển',
-                                'product' => 'Sản phẩm',
-                                'refund' => 'Hoàn tiền',
-                                'account' => 'Tài khoản',
-                                default => 'Khác'
-                            };
-                            $statusLabel = match($st->status) {
-                                'open' => 'Mới mở',
-                                'in_progress' => 'Đang xử lý',
-                                'resolved' => 'Đã giải quyết',
-                                'closed' => 'Đã đóng',
-                                default => $st->status
-                            };
-                            $statusClass = match($st->status) {
-                                'open' => 'pending',
-                                'in_progress' => 'shipping',
-                                'resolved' => 'completed',
-                                'closed' => 'cancelled',
-                                default => 'muted'
-                            };
+                            $catLabel = $supportCategoryLabels[$st->category] ?? 'Không rõ danh mục';
+                            $statusMeta = $supportStatusMeta[$st->status] ?? ['label' => 'Không rõ trạng thái', 'class' => 'muted'];
                         @endphp
                         <div class="support-ticket-item {{ $loop->first ? 'active' : '' }}"
                              data-id="{{ $st->id }}"
@@ -1574,7 +1586,7 @@
                              style="background:var(--bg-panel);border:1px solid var(--border-panel);border-radius:8px;padding:12px;cursor:pointer;transition:all .15s ease">
                             <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
                                 <span class="mono" style="font-size:11px;color:var(--lime);font-weight:700">#{{ $st->id }} · {{ $catLabel }}</span>
-                                <span class="status {{ $statusClass }}" style="font-size:9px;padding:2px 6px">{{ $statusLabel }}</span>
+                                <span class="status {{ $statusMeta['class'] }}" style="font-size:9px;padding:2px 6px">{{ $statusMeta['label'] }}</span>
                             </div>
                             <div style="font-weight:700;font-size:13px;color:var(--text-main);margin-bottom:4px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">
                                 {{ $st->subject }}
@@ -1598,7 +1610,7 @@
             </div>
 
             {{-- Right Column: Conversation Thread & Action Hub --}}
-            <div id="supportDetailPanel" style="background:var(--bg-panel-sub);border:1px solid var(--border-panel);border-radius:10px;padding:20px;display:flex;flex-direction:column;height:720px">
+            <div id="supportDetailPanel" class="support-detail-panel" style="background:var(--bg-panel-sub);border:1px solid var(--border-panel);border-radius:10px;padding:20px;display:flex;flex-direction:column;height:720px">
                 @if($supportTicketsAll->isNotEmpty())
                     @php $firstTicket = $supportTicketsAll->first(); @endphp
                     {{-- Detail Header --}}
@@ -1610,10 +1622,11 @@
                                     <h3 id="ticketDetailSubject" style="font:700 18px/1.2 'Oswald',sans-serif;color:var(--text-main);margin:0">
                                         {{ $firstTicket->subject }}
                                     </h3>
-                                    <span id="ticketDetailStatusBadge" class="status completed">{{ $firstTicket->status }}</span>
+                                    @php $firstStatusMeta = $supportStatusMeta[$firstTicket->status] ?? ['label' => 'Không rõ trạng thái', 'class' => 'muted']; @endphp
+                                    <span id="ticketDetailStatusBadge" class="status {{ $firstStatusMeta['class'] }}">{{ $firstStatusMeta['label'] }}</span>
                                 </div>
                                 <div class="muted" style="font-size:12px;display:flex;gap:14px;flex-wrap:wrap">
-                                    <span>Danh mục: <b id="ticketDetailCategory" style="color:var(--text-sub)">{{ $firstTicket->category }}</b></span>
+                                    <span>Danh mục: <b id="ticketDetailCategory" style="color:var(--text-sub)">{{ $supportCategoryLabels[$firstTicket->category] ?? 'Không rõ danh mục' }}</b></span>
                                     <span>Khách hàng: <a id="ticketDetailCustomerLink" href="{{ route('admin.customers.show', $firstTicket->user_id) }}" class="lime-link" target="_blank">{{ $firstTicket->user?->name }} ({{ $firstTicket->user?->email }})</a></span>
                                     <span id="ticketDetailOrderWrap">
                                         @if($firstTicket->order)
@@ -1627,10 +1640,10 @@
                             <div style="display:flex;align-items:center;gap:8px">
                                 <span class="muted" style="font-size:11px">Trạng thái:</span>
                                 <select id="ticketStatusSelect" onchange="changeTicketStatus(this.value)" class="input" style="font-size:12px;padding:6px 10px;background:var(--bg-panel);border:1px solid var(--border-panel);color:var(--text-main);border-radius:6px">
-                                    <option value="open">Mới mở (open)</option>
-                                    <option value="in_progress">Đang xử lý (in_progress)</option>
-                                    <option value="resolved">Đã giải quyết (resolved)</option>
-                                    <option value="closed">Đã đóng (closed)</option>
+                                    <option value="open">Mới</option>
+                                    <option value="in_progress">Đang xử lý</option>
+                                    <option value="resolved">Đã giải quyết</option>
+                                    <option value="closed">Đã đóng</option>
                                 </select>
                             </div>
                         </div>
@@ -3446,14 +3459,45 @@ function lookupPassport() {
 // ── Customer Support Hub JS Handlers ──
 window.allSupportTicketsList = @json($supportTicketsAll);
 let currentSelectedTicketId = window.allSupportTicketsList.length > 0 ? window.allSupportTicketsList[0].id : null;
+const supportCategoryLabels = {
+    order: 'Đơn hàng',
+    payment: 'Thanh toán',
+    shipping: 'Vận chuyển',
+    product: 'Sản phẩm',
+    refund: 'Hoàn tiền',
+    account: 'Tài khoản',
+    other: 'Khác'
+};
+const supportStatusMeta = {
+    open: { label: 'Mới', className: 'pending' },
+    in_progress: { label: 'Đang xử lý', className: 'shipping' },
+    resolved: { label: 'Đã giải quyết', className: 'completed' },
+    closed: { label: 'Đã đóng', className: 'cancelled' }
+};
+
+function getSupportCategoryLabel(category) {
+    return supportCategoryLabels[category] || 'Không rõ danh mục';
+}
+
+function getSupportStatusMeta(status) {
+    return supportStatusMeta[status] || { label: 'Không rõ trạng thái', className: 'muted' };
+}
+
+function makeSupportEmptyState(message) {
+    const empty = document.createElement('div');
+    empty.className = 'muted';
+    empty.style.cssText = 'text-align:center;padding:20px;font-size:12px';
+    empty.textContent = message;
+    return empty;
+}
 
 function renderTicketMessages(ticket) {
     const thread = document.getElementById('ticketMessagesThread');
     if (!thread) return;
-    thread.innerHTML = '';
+    thread.replaceChildren();
     const messages = ticket.messages || [];
     if (messages.length === 0) {
-        thread.innerHTML = '<div class="muted" style="text-align:center;padding:20px;font-size:12px">Chưa có tin nhắn trong cuộc trò chuyện này.</div>';
+        thread.appendChild(makeSupportEmptyState('Chưa có tin nhắn trong cuộc trò chuyện này.'));
         return;
     }
 
@@ -3468,18 +3512,22 @@ function renderTicketMessages(ticket) {
         const senderName = msg.sender?.name || (isCustomer ? 'Khách hàng' : 'Fieldcraft Support');
         const timeStr = msg.created_at ? new Date(msg.created_at).toLocaleString('vi-VN') : '';
 
-        bubble.innerHTML = `
-            <div style="display:flex;align-items:center;gap:6px;margin-bottom:3px;font-size:11px;color:var(--text-muted)">
-                <span>${senderName}</span>
-                <span class="status ${isCustomer ? 'muted' : 'completed'}" style="font-size:9px;padding:1px 5px">
-                    ${isCustomer ? 'Khách hàng' : 'Admin Support'}
-                </span>
-                <span>${timeStr}</span>
-            </div>
-            <div style="max-width:80%;padding:10px 14px;border-radius:8px;font-size:13px;line-height:1.45;${isCustomer ? 'background:var(--bg-panel);border:1px solid var(--border-panel);color:var(--text-main);' : 'background:#132a1e;border:1px solid var(--lime);color:var(--text-main);'}">
-                ${(msg.message || '').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/\n/g, '<br>')}
-            </div>
-        `;
+        const meta = document.createElement('div');
+        meta.style.cssText = 'display:flex;align-items:center;gap:6px;margin-bottom:3px;font-size:11px;color:var(--text-muted)';
+        const sender = document.createElement('span');
+        sender.textContent = senderName;
+        const role = document.createElement('span');
+        role.className = 'status ' + (isCustomer ? 'muted' : 'completed');
+        role.style.cssText = 'font-size:9px;padding:1px 5px';
+        role.textContent = isCustomer ? 'Khách hàng' : 'Admin Support';
+        const time = document.createElement('span');
+        time.textContent = timeStr;
+        meta.append(sender, role, time);
+
+        const message = document.createElement('div');
+        message.style.cssText = 'max-width:80%;padding:10px 14px;border-radius:8px;font-size:13px;line-height:1.45;white-space:pre-wrap;' + (isCustomer ? 'background:var(--bg-panel);border:1px solid var(--border-panel);color:var(--text-main);' : 'background:#132a1e;border:1px solid var(--lime);color:var(--text-main);');
+        message.textContent = msg.message || '';
+        bubble.append(meta, message);
         thread.appendChild(bubble);
     });
 
@@ -3495,6 +3543,15 @@ function selectSupportTicket(ticketId) {
         el.classList.toggle('active', parseInt(el.dataset.id) === ticketId);
         el.style.borderColor = parseInt(el.dataset.id) === ticketId ? 'var(--lime)' : 'var(--border-panel)';
         el.style.background = parseInt(el.dataset.id) === ticketId ? 'var(--bg-panel-sub)' : 'var(--bg-panel)';
+        if (parseInt(el.dataset.id) === ticketId) {
+            el.dataset.status = ticket.status;
+            const listStatusBadge = el.querySelector('.status');
+            if (listStatusBadge) {
+                const listStatus = getSupportStatusMeta(ticket.status);
+                listStatusBadge.className = 'status ' + listStatus.className;
+                listStatusBadge.textContent = listStatus.label;
+            }
+        }
     });
 
     const idEl = document.getElementById('ticketDetailId');
@@ -3504,13 +3561,16 @@ function selectSupportTicket(ticketId) {
     const statusSelect = document.getElementById('ticketStatusSelect');
     const customerLink = document.getElementById('ticketDetailCustomerLink');
     const orderWrap = document.getElementById('ticketDetailOrderWrap');
+    const replyBox = document.getElementById('ticketReplyBox');
+    const replyForm = document.getElementById('supportReplyForm');
 
     if (idEl) idEl.textContent = '#' + ticket.id;
     if (subjEl) subjEl.textContent = ticket.subject;
-    if (catEl) catEl.textContent = ticket.category;
+    if (catEl) catEl.textContent = getSupportCategoryLabel(ticket.category);
     if (statusBadge) {
-        statusBadge.textContent = ticket.status;
-        statusBadge.className = 'status ' + (ticket.status === 'resolved' || ticket.status === 'closed' ? 'completed' : 'pending');
+        const statusMeta = getSupportStatusMeta(ticket.status);
+        statusBadge.textContent = statusMeta.label;
+        statusBadge.className = 'status ' + statusMeta.className;
     }
     if (statusSelect) statusSelect.value = ticket.status;
 
@@ -3520,10 +3580,32 @@ function selectSupportTicket(ticketId) {
     }
 
     if (orderWrap) {
+        orderWrap.replaceChildren();
         if (ticket.order) {
-            orderWrap.innerHTML = `Đơn: <a href="/admin/orders/${ticket.order_id}" class="lime-link mono" target="_blank">#${ticket.order.number}</a>`;
-        } else {
-            orderWrap.innerHTML = '';
+            orderWrap.appendChild(document.createTextNode('Đơn: '));
+            const orderLink = document.createElement('a');
+            orderLink.href = '/admin/orders/' + encodeURIComponent(String(ticket.order_id));
+            orderLink.className = 'lime-link mono';
+            orderLink.target = '_blank';
+            orderLink.rel = 'noopener';
+            orderLink.textContent = '#' + (ticket.order.number || ticket.order_id);
+            orderWrap.appendChild(orderLink);
+        }
+    }
+
+    if (replyBox && replyForm) {
+        let closedNotice = replyBox.querySelector('.support-closed-notice');
+        const isClosed = ticket.status === 'closed';
+        replyForm.hidden = isClosed;
+        if (isClosed) {
+            if (!closedNotice) {
+                closedNotice = makeSupportEmptyState('Yêu cầu hỗ trợ này đã đóng.');
+                closedNotice.classList.add('support-closed-notice');
+                replyBox.appendChild(closedNotice);
+            }
+            closedNotice.hidden = false;
+        } else if (closedNotice) {
+            closedNotice.remove();
         }
     }
 
@@ -3575,8 +3657,6 @@ async function changeTicketStatus(newStatus) {
             const ticket = window.allSupportTicketsList.find(t => t.id === currentSelectedTicketId);
             if (ticket) ticket.status = newStatus;
             selectSupportTicket(currentSelectedTicketId);
-            const listItem = document.querySelector(`.support-ticket-item[data-id="${currentSelectedTicketId}"]`);
-            if (listItem) listItem.dataset.status = newStatus;
         } else {
             alert(data.message || 'Không thể chuyển trạng thái ticket theo quy trình.');
         }
@@ -3651,7 +3731,7 @@ async function submitAdminLoyaltyVoucher(e) {
 
     const btn = document.getElementById('btnSubmitAdminLoyaltyVoucher');
     const errBox = document.getElementById('adminLoyaltyVoucherError');
-    if (errBox) { errBox.style.display = 'none'; errBox.innerHTML = ''; }
+    if (errBox) { errBox.style.display = 'none'; errBox.textContent = ''; }
     btn.disabled = true;
     btn.textContent = 'Đang cấp voucher...';
 
@@ -3683,16 +3763,16 @@ async function submitAdminLoyaltyVoucher(e) {
         } else {
             let msg = data.message || 'Lỗi khi cấp voucher.';
             if (data.errors) {
-                msg = Object.values(data.errors).flat().join('<br>');
+                msg = Object.values(data.errors).flat().join('\n');
             }
             if (errBox) {
-                errBox.innerHTML = msg;
+                errBox.textContent = msg;
                 errBox.style.display = 'block';
             }
         }
     } catch (err) {
         if (errBox) {
-            errBox.innerHTML = 'Không thể kết nối máy chủ.';
+            errBox.textContent = 'Không thể kết nối máy chủ.';
             errBox.style.display = 'block';
         }
     } finally {

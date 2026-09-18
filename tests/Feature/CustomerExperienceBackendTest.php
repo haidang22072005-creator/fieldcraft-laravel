@@ -6,8 +6,10 @@ use App\Actions\CreateOrder;
 use App\Models\Coupon;
 use App\Models\Order;
 use App\Models\OrderItem;
+use App\Models\Payment;
 use App\Models\Product;
 use App\Models\ProductVariant;
+use App\Models\Review;
 use App\Models\SupportTicket;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -128,5 +130,132 @@ class CustomerExperienceBackendTest extends TestCase
         $this->assertArrayHasKey('recent_support_tickets', $payload);
         $this->assertCount(1, $payload['recent_orders']);
         $this->actingAs($admin)->getJson(route('admin.intelligence.customers.360', $customer))->assertOk();
+    }
+
+    public function test_customer360_eager_loads_recent_ticket_orders_for_the_bounded_payload(): void
+    {
+        $customer = User::factory()->create(['role' => 'customer']);
+        $variant = $this->variant();
+        $order = $this->customerOrder($customer, $variant, 'SUPPORT-ORDER', now())[0];
+        SupportTicket::create([
+            'user_id' => $customer->id,
+            'order_id' => $order->id,
+            'subject' => 'Order question',
+            'category' => 'order',
+            'status' => 'open',
+            'last_message_at' => now(),
+        ]);
+
+        $tickets = app(\App\Services\AdminIntelligenceService::class)->customer360($customer)['recent_support_tickets'];
+
+        $this->assertCount(1, $tickets);
+        $this->assertTrue($tickets->first()->relationLoaded('order'));
+        $this->assertSame($order->id, $tickets->first()->order->id);
+    }
+
+    public function test_customer_profile_renders_only_five_recent_orders(): void
+    {
+        $customer = User::factory()->create(['role' => 'customer']);
+        $admin = User::factory()->create(['role' => 'admin']);
+        $variant = $this->variant();
+
+        foreach (range(1, 6) as $number) {
+            $this->customerOrder($customer, $variant, 'ORDER-'.$number, now()->subDays(6 - $number));
+        }
+
+        $response = $this->actingAs($admin)->get(route('admin.customers.show', $customer));
+
+        $response->assertOk();
+        $response->assertSee('ORDER-6');
+        $response->assertDontSee('ORDER-1');
+    }
+
+    public function test_customer_profile_renders_only_five_recent_reviews(): void
+    {
+        $customer = User::factory()->create(['role' => 'customer']);
+        $admin = User::factory()->create(['role' => 'admin']);
+        $variant = $this->variant();
+
+        foreach (range(1, 6) as $number) {
+            $createdAt = now()->subDays(6 - $number);
+            [$order, $item] = $this->customerOrder($customer, $variant, 'REVIEW-ORDER-'.$number, $createdAt);
+            Review::create([
+                'user_id' => $customer->id,
+                'product_id' => $variant->product_id,
+                'order_id' => $order->id,
+                'order_item_id' => $item->id,
+                'rating' => 5,
+                'comment' => 'Review-'.$number,
+                'status' => 'approved',
+                'created_at' => $createdAt,
+                'updated_at' => $createdAt,
+            ]);
+        }
+
+        $response = $this->actingAs($admin)->get(route('admin.customers.show', $customer));
+
+        $response->assertOk();
+        $response->assertSee('Review-6');
+        $response->assertDontSee('Review-1');
+    }
+
+    public function test_customer360_completed_metrics_use_only_completed_non_refunded_orders(): void
+    {
+        $customer = User::factory()->create(['role' => 'customer']);
+        $variant = $this->variant();
+        $this->customerOrder($customer, $variant, 'VALID-ORDER', now()->subDays(3), 'completed', 250000);
+        $refunded = $this->customerOrder($customer, $variant, 'REFUNDED-ORDER', now()->subDays(2), 'completed', 900000)[0];
+        $this->customerOrder($customer, $variant, 'PENDING-ORDER', now()->subDay(), 'pending', 800000);
+        Payment::create([
+            'order_id' => $refunded->id,
+            'provider' => 'momo',
+            'request_id' => str()->uuid(),
+            'amount' => $refunded->total,
+            'status' => 'paid',
+            'refund_status' => 'refunded',
+        ]);
+
+        $payload = app(\App\Services\AdminIntelligenceService::class)->customer360($customer);
+
+        $this->assertSame(3, $payload['total_orders']);
+        $this->assertSame(1, $payload['completed_orders']);
+        $this->assertSame(250000, $payload['completed_spend']);
+        $this->assertSame(250000, $payload['average_order_value']);
+    }
+
+    private function customerOrder(User $customer, ProductVariant $variant, string $number, $createdAt, string $status = 'completed', int $total = 100000): array
+    {
+        $order = Order::create([
+            'number' => $number,
+            'user_id' => $customer->id,
+            'subtotal' => $total,
+            'discount' => 0,
+            'shipping_fee' => 0,
+            'total' => $total,
+            'payment_method' => 'cod',
+            'payment_status' => 'unpaid',
+            'status' => $status,
+            'recipient_name' => 'Buyer',
+            'recipient_phone' => '0912345678',
+            'recipient_email' => $customer->email,
+            'province' => 'Ha Noi',
+            'district' => 'Nam Tu Liem',
+            'ward' => 'My Dinh',
+            'address_line' => '1 Test Street',
+            'created_at' => $createdAt,
+            'updated_at' => $createdAt,
+        ]);
+        $item = OrderItem::create([
+            'order_id' => $order->id,
+            'product_variant_id' => $variant->id,
+            'product_name' => $variant->product->name,
+            'sku' => $variant->sku,
+            'color' => $variant->color,
+            'size' => $variant->size,
+            'unit_price' => $total,
+            'quantity' => 1,
+        ]);
+
+        return [$order, $item];
     }
 }

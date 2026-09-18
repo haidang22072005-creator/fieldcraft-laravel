@@ -399,6 +399,16 @@
             .social {
                 grid-template-columns: 1fr;
             }
+            .customer-ticket-modal-card {
+                padding: 16px !important;
+                max-height: 90vh !important;
+            }
+            .customer-reply-row {
+                flex-direction: column;
+            }
+            .customer-reply-row .btn {
+                align-self: stretch !important;
+            }
         }
     </style>
 </head>
@@ -715,11 +725,6 @@
                         </div>
                         <p class="muted">Cần thêm {{ max(0, 500 - $user->loyalty_points) }} điểm để lên hạng Bạc. Điểm được cộng sau khi đơn hoàn thành.</p>
                     </div>
-                    <div class="panel">
-                        <h2>Đổi voucher</h2>
-                        <p class="muted">Voucher sẽ mở khóa khi có đủ điểm. Chưa có giao dịch điểm nào.</p>
-                        <button class="btn gray" disabled style="opacity:0.6;cursor:not-allowed">500 ĐIỂM · GIẢM 50.000₫</button>
-                    </div>
                 </section>
 
                 <section class="pane" id="notifications">
@@ -762,7 +767,7 @@
 
 {{-- MODAL: CUSTOMER TICKET CONVERSATION THREAD --}}
 <div id="customerTicketModal" style="display:none;position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.8);z-index:9999;align-items:center;justify-content:center;padding:20px">
-    <div style="background:var(--bg-panel);border:1px solid var(--border-panel);border-radius:12px;max-width:680px;width:100%;max-height:85vh;display:flex;flex-direction:column;padding:24px;position:relative">
+    <div class="customer-ticket-modal-card" style="background:var(--bg-panel);border:1px solid var(--border-panel);border-radius:12px;max-width:680px;width:100%;max-height:85vh;display:flex;flex-direction:column;padding:24px;position:relative">
         <div style="display:flex;justify-content:space-between;align-items:flex-start;border-bottom:1px solid var(--border-panel);padding-bottom:14px;margin-bottom:14px">
             <div>
                 <span class="mono" id="modalTicketId" style="font-size:11px;color:var(--neon-green);font-weight:700"></span>
@@ -779,7 +784,7 @@
         <div id="modalReplyWrap" style="border-top:1px solid var(--border-panel);padding-top:14px">
             <form id="customerTicketReplyForm" onsubmit="submitCustomerTicketReply(event)">
                 @csrf
-                <div style="display:flex;gap:10px">
+                <div class="customer-reply-row" style="display:flex;gap:10px">
                     <textarea id="customerReplyInput" name="message" required rows="2" placeholder="Nhập phản hồi của bạn..." style="flex:1;background:var(--bg-input);border:1px solid var(--border-input);border-radius:6px;padding:8px 12px;color:var(--text-main);resize:none"></textarea>
                     <button type="submit" id="btnSendCustomerReply" class="btn" style="margin:0;height:40px;align-self:flex-end">GỬI</button>
                 </div>
@@ -822,15 +827,112 @@
             reader.onload = function(e) {
                 const box = document.getElementById('avatarPreviewBox');
                 if (box) {
-                    box.innerHTML = `<img src="${e.target.result}" style="width:100%;height:100%;object-fit:cover;border-radius:50%">`;
+                    const image = document.createElement('img');
+                    image.src = e.target.result;
+                    image.alt = 'Ảnh đại diện xem trước';
+                    image.style.cssText = 'width:100%;height:100%;object-fit:cover;border-radius:50%';
+                    box.replaceChildren(image);
                 }
             };
             reader.readAsDataURL(file);
         }
     }
 
+    const customerSupportCategoryLabels = {
+        order: 'Đơn hàng',
+        shipping: 'Vận chuyển',
+        payment: 'Thanh toán',
+        refund: 'Hoàn tiền',
+        product: 'Sản phẩm',
+        account: 'Tài khoản',
+        other: 'Khác'
+    };
+    const customerSupportStatusMeta = {
+        open: { label: 'Mới', className: 'pending' },
+        in_progress: { label: 'Đang xử lý', className: 'shipping' },
+        resolved: { label: 'Đã giải quyết', className: 'completed' },
+        closed: { label: 'Đã đóng', className: 'cancelled' }
+    };
+
+    function customerSupportCategoryLabel(category) {
+        return customerSupportCategoryLabels[category] || 'Không rõ danh mục';
+    }
+
+    function customerSupportStatus(status) {
+        return customerSupportStatusMeta[status] || { label: 'Không rõ trạng thái', className: 'muted' };
+    }
+
+    function customerStateMessage(message) {
+        const element = document.createElement('div');
+        element.className = 'muted';
+        element.style.cssText = 'text-align:center;padding:20px';
+        element.textContent = message;
+        return element;
+    }
+
+    function customerEmptyState(icon, title, description) {
+        const element = document.createElement('div');
+        element.style.cssText = 'text-align:center;padding:40px 20px;background:var(--bg-panel-sub);border:1px dashed var(--border-panel);border-radius:8px';
+        const iconElement = document.createElement('div');
+        iconElement.style.cssText = 'font-size:32px;margin-bottom:8px';
+        iconElement.textContent = icon;
+        const titleElement = document.createElement('b');
+        titleElement.style.cssText = 'color:var(--text-main);font-size:15px';
+        titleElement.textContent = title;
+        const descriptionElement = document.createElement('p');
+        descriptionElement.className = 'muted';
+        descriptionElement.style.cssText = 'font-size:12px;margin:6px 0 0';
+        descriptionElement.textContent = description;
+        element.append(iconElement, titleElement, descriptionElement);
+        return element;
+    }
+
     // Customer Vouchers logic
     let vouchersLoaded = false;
+    function createVoucherCard(voucher) {
+        const isPercent = voucher.type === 'percent';
+        const discountText = isPercent ? 'GIẢM ' + voucher.value + '%' : 'GIẢM ' + new Intl.NumberFormat('vi-VN').format(voucher.value) + ' ₫';
+        const minOrderText = voucher.minimum_order_value ? 'Đơn từ ' + new Intl.NumberFormat('vi-VN').format(voucher.minimum_order_value) + ' ₫' : 'Mọi đơn hàng';
+        const maxDiscText = voucher.max_discount ? ' · Tối đa ' + new Intl.NumberFormat('vi-VN').format(voucher.max_discount) + ' ₫' : '';
+        const expiryText = voucher.expires_at ? 'Hạn dùng: ' + new Date(voucher.expires_at).toLocaleDateString('vi-VN') : 'Vô thời hạn';
+        const card = document.createElement('div');
+        card.style.cssText = 'background:var(--bg-panel-sub);border:1px solid var(--border-sub);border-radius:10px;padding:16px;position:relative;display:flex;flex-direction:column;justify-content:space-between';
+        const header = document.createElement('div');
+        header.style.cssText = 'display:flex;justify-content:space-between;align-items:center;margin-bottom:10px';
+        const discount = document.createElement('span');
+        discount.style.cssText = "font:700 18px/1 'Oswald',sans-serif;color:var(--neon-green)";
+        discount.textContent = discountText;
+        const badge = document.createElement('span');
+        badge.className = 'badge';
+        badge.style.margin = '0';
+        badge.textContent = 'VOUCHER CỦA BẠN';
+        header.append(discount, badge);
+        const details = document.createElement('div');
+        details.style.cssText = 'font-size:12px;color:var(--text-sub);margin-bottom:4px';
+        details.textContent = minOrderText + maxDiscText;
+        const expiry = document.createElement('div');
+        expiry.className = 'muted';
+        expiry.style.fontSize = '11px';
+        expiry.textContent = '🗓️ ' + expiryText;
+        const content = document.createElement('div');
+        content.append(header, details, expiry);
+        const footer = document.createElement('div');
+        footer.style.cssText = 'margin-top:14px;padding-top:12px;border-top:1px dashed var(--border-panel);display:flex;justify-content:space-between;align-items:center';
+        const code = document.createElement('span');
+        code.className = 'mono';
+        code.style.cssText = 'font-size:13px;font-weight:700;color:var(--text-main);background:var(--bg-input);padding:4px 8px;border-radius:4px;border:1px solid var(--border-panel)';
+        code.textContent = voucher.code || '—';
+        const copyButton = document.createElement('button');
+        copyButton.type = 'button';
+        copyButton.className = 'btn';
+        copyButton.style.cssText = 'margin:0;padding:6px 12px;font-size:11px';
+        copyButton.textContent = 'SAO CHÉP';
+        copyButton.addEventListener('click', () => copyVoucherCode(String(voucher.code || '')));
+        footer.append(code, copyButton);
+        card.append(content, footer);
+        return card;
+    }
+
     async function fetchCustomerVouchers() {
         if (vouchersLoaded) return;
         const container = document.getElementById('customerVouchersContainer');
@@ -840,57 +942,21 @@
             const res = await fetch('{{ route('vouchers.index') }}', {
                 headers: { 'Accept': 'application/json' }
             });
+            if (!res.ok) throw new Error('Unable to load vouchers');
             const data = await res.json();
-            const vouchers = data.data || [];
+            const vouchers = Array.isArray(data.data) ? data.data : [];
             vouchersLoaded = true;
 
             if (vouchers.length === 0) {
-                container.innerHTML = `
-                    <div style="grid-column:1/-1;text-align:center;padding:40px 20px;background:var(--bg-panel-sub);border:1px dashed var(--border-panel);border-radius:8px">
-                        <div style="font-size:32px;margin-bottom:8px">🎁</div>
-                        <b style="color:var(--text-main);font-size:15px">Bạn chưa có mã ưu đãi cá nhân nào</b>
-                        <p class="muted" style="font-size:12px;margin:6px 0 0">
-                            Hãy tiếp tục mua sắm và hoàn thành đơn hàng để tích điểm và mở khóa các voucher đặc quyền từ Fieldcraft.
-                        </p>
-                    </div>
-                `;
+                const empty = customerEmptyState('🎁', 'Bạn chưa có mã ưu đãi cá nhân nào', 'Hãy tiếp tục mua sắm và hoàn thành đơn hàng để tích điểm và mở khóa các voucher đặc quyền từ Fieldcraft.');
+                empty.style.gridColumn = '1 / -1';
+                container.replaceChildren(empty);
                 return;
             }
 
-            container.innerHTML = vouchers.map(v => {
-                const isPercent = (v.type === 'percent');
-                const discountText = isPercent ? `GIẢM ${v.value}%` : `GIẢM ${new Intl.NumberFormat('vi-VN').format(v.value)} ₫`;
-                const minOrderText = v.minimum_order_value ? `Đơn từ ${new Intl.NumberFormat('vi-VN').format(v.minimum_order_value)} ₫` : 'Mọi đơn hàng';
-                const maxDiscText = v.max_discount ? ` · Tối đa ${new Intl.NumberFormat('vi-VN').format(v.max_discount)} ₫` : '';
-                const expiryText = v.expires_at ? `Hạn dùng: ${new Date(v.expires_at).toLocaleDateString('vi-VN')}` : 'Vô thời hạn';
-
-                return `
-                    <div style="background:var(--bg-panel-sub);border:1px solid var(--border-sub);border-radius:10px;padding:16px;position:relative;display:flex;flex-direction:column;justify-content:space-between">
-                        <div>
-                            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
-                                <span style="font:700 18px/1 'Oswald',sans-serif;color:var(--neon-green)">${discountText}</span>
-                                <span class="badge" style="margin:0">VOUCHER CỦA BẠN</span>
-                            </div>
-                            <div style="font-size:12px;color:var(--text-sub);margin-bottom:4px">
-                                ${minOrderText}${maxDiscText}
-                            </div>
-                            <div class="muted" style="font-size:11px">
-                                🗓️ ${expiryText}
-                            </div>
-                        </div>
-                        <div style="margin-top:14px;padding-top:12px;border-top:1px dashed var(--border-panel);display:flex;justify-content:space-between;align-items:center">
-                            <span class="mono" style="font-size:13px;font-weight:700;color:var(--text-main);background:var(--bg-input);padding:4px 8px;border-radius:4px;border:1px solid var(--border-panel)">
-                                ${v.code}
-                            </span>
-                            <button type="button" class="btn" style="margin:0;padding:6px 12px;font-size:11px" onclick="copyVoucherCode('${v.code}')">
-                                SAO CHÉP
-                            </button>
-                        </div>
-                    </div>
-                `;
-            }).join('');
+            container.replaceChildren(...vouchers.map(createVoucherCard));
         } catch (e) {
-            container.innerHTML = '<div class="muted" style="text-align:center;padding:20px">Không thể tải mã ưu đãi lúc này.</div>';
+            container.replaceChildren(customerStateMessage('Không thể tải mã ưu đãi lúc này.'));
         }
     }
 
@@ -913,6 +979,48 @@
         }
     }
 
+    function createCustomerTicketCard(ticket) {
+        const status = customerSupportStatus(ticket.status);
+        const card = document.createElement('div');
+        card.style.cssText = 'background:var(--bg-panel-sub);border:1px solid var(--border-sub);border-radius:8px;padding:16px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:12px';
+        const content = document.createElement('div');
+        content.style.cssText = 'flex:1;min-width:240px';
+        const meta = document.createElement('div');
+        meta.style.cssText = 'display:flex;align-items:center;gap:8px;margin-bottom:4px';
+        const id = document.createElement('span');
+        id.className = 'mono';
+        id.style.cssText = 'font-size:11px;color:var(--neon-green);font-weight:700';
+        id.textContent = '#' + ticket.id;
+        const category = document.createElement('span');
+        category.className = 'badge';
+        category.style.margin = '0';
+        category.textContent = customerSupportCategoryLabel(ticket.category);
+        const statusBadge = document.createElement('span');
+        statusBadge.className = 'status ' + status.className;
+        statusBadge.style.cssText = 'font-size:9px;padding:2px 6px';
+        statusBadge.textContent = status.label;
+        meta.append(id, category, statusBadge);
+        const subject = document.createElement('div');
+        subject.style.cssText = 'font-weight:700;font-size:14px;color:var(--text-main);margin-bottom:4px';
+        subject.textContent = ticket.subject || 'Không có tiêu đề';
+        const updated = document.createElement('div');
+        updated.className = 'muted';
+        updated.style.fontSize = '11px';
+        const timeText = ticket.last_message_at ? new Date(ticket.last_message_at).toLocaleString('vi-VN') : '';
+        updated.textContent = '💬 ' + (ticket.messages_count || 0) + ' tin nhắn · Cập nhật cuối: ' + timeText;
+        content.append(meta, subject, updated);
+        const action = document.createElement('div');
+        const button = document.createElement('button');
+        button.type = 'button';
+        button.className = 'btn';
+        button.style.cssText = 'margin:0;padding:8px 14px;font-size:11px';
+        button.textContent = 'XEM CHI TIẾT & TRAO ĐỔI →';
+        button.addEventListener('click', () => openCustomerTicketModal(Number(ticket.id)));
+        action.appendChild(button);
+        card.append(content, action);
+        return card;
+    }
+
     async function fetchCustomerTickets() {
         if (ticketsLoaded) return;
         const container = document.getElementById('customerTicketsContainer');
@@ -922,69 +1030,19 @@
             const res = await fetch('{{ route('support.tickets.index') }}', {
                 headers: { 'Accept': 'application/json' }
             });
+            if (!res.ok) throw new Error('Unable to load support tickets');
             const data = await res.json();
-            const tickets = data.data || [];
+            const tickets = Array.isArray(data.data) ? data.data : [];
             ticketsLoaded = true;
 
             if (tickets.length === 0) {
-                container.innerHTML = `
-                    <div style="text-align:center;padding:40px 20px;background:var(--bg-panel-sub);border:1px dashed var(--border-panel);border-radius:8px">
-                        <div style="font-size:32px;margin-bottom:8px">🎧</div>
-                        <b style="color:var(--text-main);font-size:15px">Bạn chưa có yêu cầu hỗ trợ nào</b>
-                        <p class="muted" style="font-size:12px;margin:6px 0 0">
-                            Nếu bạn gặp bất kỳ vấn đề nào về đơn hàng, chất lượng giày, form chân hoặc hoàn tiền, hãy nhấn nút <b>"+ TẠO YÊU CẦU MỚI"</b>.
-                        </p>
-                    </div>
-                `;
+                container.replaceChildren(customerEmptyState('🎧', 'Bạn chưa có yêu cầu hỗ trợ nào', 'Nếu bạn gặp bất kỳ vấn đề nào về đơn hàng, chất lượng giày, form chân hoặc hoàn tiền, hãy nhấn nút + TẠO YÊU CẦU MỚI.'));
                 return;
             }
 
-            const categoryMap = {
-                order: 'Đơn hàng',
-                shipping: 'Vận chuyển',
-                payment: 'Thanh toán',
-                refund: 'Hoàn tiền',
-                product: 'Sản phẩm',
-                account: 'Tài khoản',
-                other: 'Khác'
-            };
-            const statusMap = {
-                open: { label: 'Mới mở', class: 'pending' },
-                in_progress: { label: 'Đang xử lý', class: 'shipping' },
-                resolved: { label: 'Đã giải quyết', class: 'completed' },
-                closed: { label: 'Đã đóng', class: 'muted' }
-            };
-
-            container.innerHTML = tickets.map(t => {
-                const catText = categoryMap[t.category] || t.category;
-                const stat = statusMap[t.status] || { label: t.status, class: 'muted' };
-                const timeText = t.last_message_at ? new Date(t.last_message_at).toLocaleString('vi-VN') : '';
-
-                return `
-                    <div style="background:var(--bg-panel-sub);border:1px solid var(--border-sub);border-radius:8px;padding:16px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:12px">
-                        <div style="flex:1;min-width:240px">
-                            <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px">
-                                <span class="mono" style="font-size:11px;color:var(--neon-green);font-weight:700">#${t.id}</span>
-                                <span class="badge" style="margin:0">${catText}</span>
-                                <span class="status ${stat.class}" style="font-size:9px;padding:2px 6px">${stat.label}</span>
-                            </div>
-                            <div style="font-weight:700;font-size:14px;color:var(--text-main);margin-bottom:4px">
-                                ${t.subject}
-                            </div>
-                            <div class="muted" style="font-size:11px">
-                                💬 ${t.messages_count || 0} tin nhắn · Cập nhật cuối: ${timeText}
-                            </div>
-                        </div>
-                        <div>
-                            <button type="button" class="btn" style="margin:0;padding:8px 14px;font-size:11px" onclick="openCustomerTicketModal(${t.id})">
-                                XEM CHI TIẾT & TRAO ĐỔI →
-                            </button>
-                        </div>
-                    </div>
-                `;
-            }).join('');
+            container.replaceChildren(...tickets.map(createCustomerTicketCard));
         } catch (e) {
-            container.innerHTML = '<div class="muted" style="text-align:center;padding:20px">Không thể tải danh sách hỗ trợ lúc này.</div>';
+            container.replaceChildren(customerStateMessage('Không thể tải danh sách hỗ trợ lúc này.'));
         }
     }
 
@@ -1037,55 +1095,80 @@
         }
     }
 
+    function setCustomerReplyState(isClosed) {
+        const replyWrap = document.getElementById('modalReplyWrap');
+        const replyForm = document.getElementById('customerTicketReplyForm');
+        if (!replyWrap || !replyForm) return;
+        let closedNotice = replyWrap.querySelector('.customer-closed-notice');
+        replyForm.hidden = isClosed;
+        if (isClosed) {
+            if (!closedNotice) {
+                closedNotice = customerStateMessage('Yêu cầu hỗ trợ này đã đóng.');
+                closedNotice.classList.add('customer-closed-notice');
+                closedNotice.style.fontSize = '12px';
+                closedNotice.style.padding = '8px';
+                replyWrap.appendChild(closedNotice);
+            }
+            closedNotice.hidden = false;
+        } else if (closedNotice) {
+            closedNotice.remove();
+        }
+    }
+
+    function renderCustomerTicketMessages(messages) {
+        const msgContainer = document.getElementById('modalTicketMessages');
+        if (!msgContainer) return;
+        msgContainer.replaceChildren();
+        if (messages.length === 0) {
+            msgContainer.appendChild(customerStateMessage('Chưa có tin nhắn.'));
+            return;
+        }
+
+        messages.forEach(messageData => {
+            const isCustomer = messageData.sender_role === 'customer';
+            const bubble = document.createElement('div');
+            bubble.style.cssText = 'display:flex;flex-direction:column;align-items:' + (isCustomer ? 'flex-end' : 'flex-start');
+            const meta = document.createElement('div');
+            meta.style.cssText = 'font-size:11px;color:var(--text-muted);margin-bottom:3px';
+            const sender = document.createElement('b');
+            sender.textContent = isCustomer ? 'Bạn' : 'Fieldcraft Support';
+            const time = messageData.created_at ? new Date(messageData.created_at).toLocaleString('vi-VN') : '';
+            meta.append(sender, document.createTextNode(' · ' + time));
+            const message = document.createElement('div');
+            message.style.cssText = 'max-width:80%;padding:10px 14px;border-radius:8px;font-size:13px;line-height:1.45;white-space:pre-wrap;' + (isCustomer ? 'background:var(--bg-panel-sub);border:1px solid var(--border-sub);color:var(--text-main);' : 'background:#132a1e;border:1px solid var(--neon-green);color:var(--text-main);');
+            message.textContent = messageData.message || '';
+            bubble.append(meta, message);
+            msgContainer.appendChild(bubble);
+        });
+    }
+
     async function openCustomerTicketModal(ticketId) {
         activeCustomerTicketId = ticketId;
         const modal = document.getElementById('customerTicketModal');
         const msgContainer = document.getElementById('modalTicketMessages');
         modal.style.display = 'flex';
-        msgContainer.innerHTML = '<div class="muted" style="text-align:center;padding:20px">Đang tải cuộc trò chuyện...</div>';
+        msgContainer.replaceChildren(customerStateMessage('Đang tải cuộc trò chuyện...'));
 
         try {
-            const res = await fetch(`/support/tickets/${ticketId}`, {
+            const res = await fetch('/support/tickets/' + encodeURIComponent(String(ticketId)), {
                 headers: { 'Accept': 'application/json' }
             });
+            if (!res.ok) throw new Error('Unable to load support ticket');
             const data = await res.json();
             const ticket = data.data;
+            if (!ticket) throw new Error('Support ticket response is empty');
 
             document.getElementById('modalTicketId').textContent = '#' + ticket.id;
-            document.getElementById('modalTicketSubject').textContent = ticket.subject;
-            document.getElementById('modalTicketMeta').textContent = `Danh mục: ${ticket.category} · Trạng thái: ${ticket.status}` + (ticket.order ? ` · Đơn hàng #${ticket.order.number}` : '');
-
-            const replyWrap = document.getElementById('modalReplyWrap');
-            if (ticket.status === 'closed') {
-                replyWrap.innerHTML = '<div class="muted" style="text-align:center;font-size:12px;padding:8px">Yêu cầu hỗ trợ này đã đóng.</div>';
-            }
-
-            const messages = ticket.messages || [];
-            if (messages.length === 0) {
-                msgContainer.innerHTML = '<div class="muted" style="text-align:center;padding:20px">Chưa có tin nhắn.</div>';
-                return;
-            }
-
-            msgContainer.innerHTML = messages.map(m => {
-                const isCustomer = (m.sender_role === 'customer');
-                const senderTitle = isCustomer ? 'Bạn' : 'Fieldcraft Support';
-                const timeStr = m.created_at ? new Date(m.created_at).toLocaleString('vi-VN') : '';
-
-                return `
-                    <div style="display:flex;flex-direction:column;align-items:${isCustomer ? 'flex-end' : 'flex-start'}">
-                        <div style="font-size:11px;color:var(--text-muted);margin-bottom:3px">
-                            <b>${senderTitle}</b> · ${timeStr}
-                        </div>
-                        <div style="max-width:80%;padding:10px 14px;border-radius:8px;font-size:13px;line-height:1.45;${isCustomer ? 'background:var(--bg-panel-sub);border:1px solid var(--border-sub);color:var(--text-main);' : 'background:#132a1e;border:1px solid var(--neon-green);color:var(--text-main);'}">
-                            ${(m.message || '').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/\n/g, '<br>')}
-                        </div>
-                    </div>
-                `;
-            }).join('');
-
+            document.getElementById('modalTicketSubject').textContent = ticket.subject || 'Không có tiêu đề';
+            const status = customerSupportStatus(ticket.status);
+            const category = customerSupportCategoryLabel(ticket.category);
+            const orderText = ticket.order ? ' · Đơn hàng #' + (ticket.order.number || ticket.order.id) : '';
+            document.getElementById('modalTicketMeta').textContent = 'Danh mục: ' + category + ' · Trạng thái: ' + status.label + orderText;
+            setCustomerReplyState(ticket.status === 'closed');
+            renderCustomerTicketMessages(Array.isArray(ticket.messages) ? ticket.messages : []);
             msgContainer.scrollTop = msgContainer.scrollHeight;
         } catch (e) {
-            msgContainer.innerHTML = '<div class="muted" style="text-align:center;padding:20px">Không thể tải tin nhắn.</div>';
+            msgContainer.replaceChildren(customerStateMessage('Không thể tải tin nhắn.'));
         }
     }
 
@@ -1108,7 +1191,7 @@
 
         const csrfToken = document.querySelector('input[name="_token"]')?.value;
         try {
-            const res = await fetch(`/support/tickets/${activeCustomerTicketId}/messages`, {
+            const res = await fetch('/support/tickets/' + encodeURIComponent(String(activeCustomerTicketId)) + '/messages', {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',

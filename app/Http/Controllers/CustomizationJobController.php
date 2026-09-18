@@ -6,6 +6,7 @@ use App\Models\CustomizationJob;
 use App\Models\Order;
 use App\Models\OrderItem;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
@@ -15,7 +16,7 @@ class CustomizationJobController extends Controller
     public function show(Request $request, CustomizationJob $customizationJob): JsonResponse
     { $this->authorize($request, $customizationJob); return response()->json(['data' => $customizationJob->load(['order', 'orderItem', 'customer'])]); }
 
-    public function store(Request $request): JsonResponse
+    public function store(Request $request): JsonResponse|RedirectResponse
     {
         $isAdmin = in_array($request->user()->role, ['admin', 'super-admin'], true);
         abort_unless($isAdmin || $request->user()->role === 'customer', 403);
@@ -57,7 +58,11 @@ class CustomizationJobController extends Controller
         $job = CustomizationJob::create($data)->load(['order', 'orderItem', 'customer']);
         app(\App\Services\ActivityLogService::class)->record('customization.created', $job, [], $request->user()->id);
         app(\App\Services\AdminNotificationService::class)->notify('customization_attention', 'Có yêu cầu customization mới', (string) $job->id, [], $job);
-        return response()->json(['data' => $job], 201);
+        if ($request->expectsJson()) {
+            return response()->json(['data' => $job], 201);
+        }
+
+        return redirect()->route('purchases.show', $order)->with('success', 'Đã gửi yêu cầu cá nhân hóa cho sản phẩm.');
     }
 
     public function updateStatus(Request $request, CustomizationJob $customizationJob): JsonResponse

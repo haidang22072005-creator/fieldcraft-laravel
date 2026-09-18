@@ -54,14 +54,14 @@ class SupportTicketController extends Controller
         $notifications->notify('support_ticket_created', 'Khách hàng tạo yêu cầu hỗ trợ', $ticket->subject, ['ticket_id' => $ticket->id], $ticket);
         $activity->record('support.ticket_created', $ticket, ['category' => $ticket->category], $request->user()->id);
 
-        return response()->json(['data' => $ticket->load(['order', 'messages.sender'])], 201);
+        return response()->json(['data' => $this->withBoundedMessages($ticket)], 201);
     }
 
     public function show(Request $request, SupportTicket $supportTicket): JsonResponse
     {
         Gate::authorize('view', $supportTicket);
 
-        return response()->json(['data' => $supportTicket->load(['order', 'messages.sender'])]);
+        return response()->json(['data' => $this->withBoundedMessages($supportTicket)]);
     }
 
     public function reply(Request $request, SupportTicket $supportTicket, AdminNotificationService $notifications, ActivityLogService $activity): JsonResponse
@@ -76,10 +76,18 @@ class SupportTicketController extends Controller
             $ticket->update(['last_message_at' => now(), 'status' => $ticket->status === 'resolved' ? 'in_progress' : $ticket->status]);
         });
 
-        $fresh = $supportTicket->fresh()->load(['order', 'messages.sender']);
+        $fresh = $this->withBoundedMessages($supportTicket->fresh());
         $notifications->notify('support_customer_message', 'Khách hàng phản hồi hỗ trợ', $fresh->subject, ['ticket_id' => $fresh->id], $fresh);
         $activity->record('support.message_created', $fresh, ['sender_role' => 'customer'], $request->user()->id);
 
         return response()->json(['data' => $fresh]);
+    }
+
+    private function withBoundedMessages(SupportTicket $ticket): SupportTicket
+    {
+        return $ticket->load([
+            'order',
+            'messages' => fn ($query) => $query->with('sender')->latest()->limit(100),
+        ]);
     }
 }

@@ -224,7 +224,7 @@ class AdminIntelligenceService
         })->latest()->limit(20)->get();
         $recentOrders = $user->orders()->with(['items', 'payments'])->latest()->limit(5)->get();
         $recentReviews = $user->reviews()->with('product')->latest()->limit(5)->get();
-        $recentSupportTickets = SupportTicket::query()->where('user_id', $user->id)->withCount('messages')->latest('last_message_at')->limit(5)->get();
+        $recentSupportTickets = SupportTicket::query()->where('user_id', $user->id)->with(['order'])->withCount('messages')->latest('last_message_at')->limit(5)->get();
         $recentTeams = TeamProfile::with('members')->where('user_id', $user->id)->latest()->limit(10)->get();
 
         return [

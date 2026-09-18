@@ -693,6 +693,15 @@
         $canRetryBank = ($order->payment_method === 'bank_qr' || $order->payment_method === 'payos')
             && $payStatus !== 'paid'
             && in_array($orderStatus, ['pending_payment', 'pending']);
+
+        $customizationStatuses = [
+            'design_pending' => 'Chờ thiết kế',
+            'customer_approval' => 'Chờ khách duyệt',
+            'approved' => 'Đã duyệt',
+            'printing' => 'Đang in',
+            'quality_check' => 'Đang kiểm tra',
+            'completed' => 'Hoàn tất',
+        ];
     @endphp
 
     {{-- Order Header --}}
@@ -829,8 +838,12 @@
                 </div>
                 <div class="panel-body">
                     @foreach($order->items as $item)
-                        @php($imageRecord = $item->variant?->product?->images->firstWhere('color', $item->color) ?? $item->variant?->product?->images->firstWhere('color', null) ?? $item->variant?->product?->images->first())
-                        @php($image = $imageRecord?->path)
+                        @php
+                            $imageRecord = $item->variant?->product?->images->firstWhere('color', $item->color)
+                                ?? $item->variant?->product?->images->firstWhere('color', null)
+                                ?? $item->variant?->product?->images->first();
+                            $image = $imageRecord?->path;
+                        @endphp
                         <div class="item-row">
                             <div class="item-thumb">
                                 @if($image)
@@ -856,6 +869,50 @@
                                 <div class="item-line-total">{{ number_format($item->unit_price * $item->quantity, 0, ',', '.') }}₫</div>
                             </div>
                         </div>
+
+                        @php
+                            $customizationJobs = $item->customizationJobs ?? collect();
+                            $latestCustomizationJob = $customizationJobs->sortByDesc('id')->first();
+                            $activeCustomizationJob = $customizationJobs->first(fn ($job) => $job->status !== 'completed');
+                        @endphp
+                        @if($orderStatus !== 'cancelled')
+                            <div style="margin:0 0 14px 80px;padding:14px;background:var(--bg-panel-sub);border:1px solid var(--border-panel);border-radius:8px">
+                                <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:8px">
+                                    <strong style="font-size:12px;color:var(--text-main)">🎽 CÁ NHÂN HÓA SẢN PHẨM <span style="color:var(--text-muted);font-weight:500">(không bắt buộc)</span></strong>
+                                    @if($latestCustomizationJob)
+                                        <span class="badge {{ $latestCustomizationJob->status === 'completed' ? 'badge-success' : 'badge-warning' }}">
+                                            {{ $customizationStatuses[$latestCustomizationJob->status] ?? $latestCustomizationJob->status }}
+                                        </span>
+                                    @endif
+                                </div>
+
+                                @if($activeCustomizationJob)
+                                    <div style="font-size:12px;color:var(--text-muted);line-height:1.5">
+                                        Yêu cầu đã được tiếp nhận.
+                                        @if($activeCustomizationJob->customization_name || $activeCustomizationJob->customization_number)
+                                            Nội dung: <strong style="color:var(--text-sub)">{{ $activeCustomizationJob->customization_name ?: '—' }} #{{ $activeCustomizationJob->customization_number ?: '—' }}</strong>.
+                                        @endif
+                                    </div>
+                                @else
+                                    <div style="font-size:12px;color:var(--text-muted);margin-bottom:10px">Bạn có thể gửi tên, số áo hoặc ghi chú in thêm cho sản phẩm này.</div>
+                                    <form method="POST" action="{{ route('customization-jobs.store') }}" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:8px;align-items:end">
+                                        @csrf
+                                        <input type="hidden" name="order_id" value="{{ $order->id }}">
+                                        <input type="hidden" name="order_item_id" value="{{ $item->id }}">
+                                        <label style="font-size:11px;color:var(--text-muted)">Tên in
+                                            <input name="customization_name" maxlength="100" value="{{ old('customization_name') }}" placeholder="Ví dụ: HAI" style="display:block;width:100%;margin-top:4px;padding:8px;background:var(--bg-body);border:1px solid var(--border-panel);border-radius:4px;color:var(--text-main)">
+                                        </label>
+                                        <label style="font-size:11px;color:var(--text-muted)">Số áo
+                                            <input name="customization_number" maxlength="20" value="{{ old('customization_number') }}" placeholder="Ví dụ: 10" style="display:block;width:100%;margin-top:4px;padding:8px;background:var(--bg-body);border:1px solid var(--border-panel);border-radius:4px;color:var(--text-main)">
+                                        </label>
+                                        <label style="font-size:11px;color:var(--text-muted);grid-column:span 2">Ghi chú
+                                            <textarea name="customization_notes" maxlength="2000" rows="2" placeholder="Màu hoặc yêu cầu khác" style="display:block;width:100%;margin-top:4px;padding:8px;background:var(--bg-body);border:1px solid var(--border-panel);border-radius:4px;color:var(--text-main);resize:vertical">{{ old('customization_notes') }}</textarea>
+                                        </label>
+                                        <button type="submit" class="btn-action btn-secondary" style="min-height:38px;padding:0 14px">GỬI YÊU CẦU</button>
+                                    </form>
+                                @endif
+                            </div>
+                        @endif
                         @if($orderStatus === 'completed')
                             @if($item->review)
                                 <div style="margin:0 0 14px 68px;color:var(--text-muted);font-size:12px">

@@ -1178,7 +1178,7 @@
                         <span class="nav-badge">{{ $pendingOrdersCount }}</span>
                     @endif
                 </a>
-                <a class="nav-link {{ request()->routeIs('admin.orders.kanban') || (request()->routeIs('admin.dashboard') && request('tab') === 'kanban') ? 'active' : '' }}" href="{{ Route::has('admin.orders.kanban') ? route('admin.orders.kanban') : route('admin.dashboard', ['tab' => 'kanban']) }}#kanban">
+                <a class="nav-link {{ request()->routeIs('admin.orders.kanban') || (request()->routeIs('admin.dashboard') && request('tab') === 'kanban') ? 'active' : '' }}" href="{{ route('admin.dashboard', ['tab' => 'kanban']) }}#kanban">
                     <span class="nav-icon">▥</span>
                     <span>Kanban</span>
                 </a>
@@ -1572,6 +1572,13 @@
         let visibleItems = [];
         let searchDebounceTimer = null;
 
+        function renderCommandMessage(message, color) {
+            const element = document.createElement('div');
+            element.style.cssText = 'padding:28px 18px;text-align:center;color:' + (color || 'var(--text-muted)') + ';font-size:13px';
+            element.textContent = message;
+            cmdResultsList.replaceChildren(element);
+        }
+
         function filterAndRenderPalette() {
             if (currentPaletteFilter === 'all') {
                 visibleItems = allSearchResults;
@@ -1582,17 +1589,9 @@
             if (visibleItems.length === 0) {
                 const q = paletteInput ? paletteInput.value.trim() : '';
                 if (q.length < 2) {
-                    cmdResultsList.innerHTML = `
-                        <div style="padding:32px 18px;text-align:center;color:var(--text-muted);font-size:13px">
-                            Nhập tối thiểu 2 ký tự để tìm kiếm toàn bộ đơn hàng, khách hàng, sản phẩm, đội bóng, second-hand, hộ chiếu...
-                        </div>
-                    `;
+                    renderCommandMessage('Nhập tối thiểu 2 ký tự để tìm kiếm toàn bộ đơn hàng, khách hàng, sản phẩm, đội bóng, second-hand, hộ chiếu...', 'var(--text-muted)');
                 } else {
-                    cmdResultsList.innerHTML = `
-                        <div style="padding:32px 18px;text-align:center;color:var(--text-muted);font-size:13px">
-                            Không tìm thấy dữ liệu phù hợp với bộ lọc trong hệ thống.
-                        </div>
-                    `;
+                    renderCommandMessage('Không tìm thấy dữ liệu phù hợp với bộ lọc trong hệ thống.', 'var(--text-muted)');
                 }
                 return;
             }
@@ -1601,23 +1600,34 @@
                 selectedPaletteIndex = 0;
             }
 
-            let html = '';
+            const fragment = document.createDocumentFragment();
             visibleItems.forEach((item, idx) => {
                 const isSel = idx === selectedPaletteIndex;
-                html += `
-                    <div class="cmd-item ${isSel ? 'selected' : ''}" data-idx="${idx}" onclick="handlePaletteSelect(${idx})">
-                        <div class="cmd-item-left">
-                            <div class="cmd-item-icon">${item.icon}</div>
-                            <div>
-                                <div class="cmd-item-label">${item.title}</div>
-                                <div class="cmd-item-sub">${item.sub}</div>
-                            </div>
-                        </div>
-                        <span style="color:var(--lime);font-size:11px">Chọn ↵</span>
-                    </div>
-                `;
+                const result = document.createElement('div');
+                result.className = 'cmd-item' + (isSel ? ' selected' : '');
+                result.dataset.idx = String(idx);
+                result.addEventListener('click', () => handlePaletteSelect(idx));
+                const left = document.createElement('div');
+                left.className = 'cmd-item-left';
+                const icon = document.createElement('div');
+                icon.className = 'cmd-item-icon';
+                icon.textContent = item.icon || '';
+                const copy = document.createElement('div');
+                const title = document.createElement('div');
+                title.className = 'cmd-item-label';
+                title.textContent = item.title || '';
+                const sub = document.createElement('div');
+                sub.className = 'cmd-item-sub';
+                sub.textContent = item.sub || '';
+                copy.append(title, sub);
+                left.append(icon, copy);
+                const hint = document.createElement('span');
+                hint.style.cssText = 'color:var(--lime);font-size:11px';
+                hint.textContent = 'Chọn ↵';
+                result.append(left, hint);
+                fragment.appendChild(result);
             });
-            cmdResultsList.innerHTML = html;
+            cmdResultsList.replaceChildren(fragment);
         }
 
         function executeLiveSearch(query) {
@@ -1628,11 +1638,7 @@
                 return;
             }
 
-            cmdResultsList.innerHTML = `
-                <div style="padding:28px 18px;text-align:center;color:var(--text-muted);font-size:13px">
-                    Đang tra cứu hệ thống dữ liệu thực...
-                </div>
-            `;
+            renderCommandMessage('Đang tra cứu hệ thống dữ liệu thực...', 'var(--text-muted)');
 
             fetch('{{ route("admin.global-search") }}?q=' + encodeURIComponent(q), {
                 headers: { 'Accept': 'application/json' }
@@ -1735,11 +1741,7 @@
             })
             .catch(err => {
                 console.error(err);
-                cmdResultsList.innerHTML = `
-                    <div style="padding:28px 18px;text-align:center;color:var(--danger);font-size:13px">
-                        Không thể kết nối dịch vụ tìm kiếm. Vui lòng thử lại.
-                    </div>
-                `;
+                renderCommandMessage('Không thể kết nối dịch vụ tìm kiếm. Vui lòng thử lại.', 'var(--danger)');
             });
         }
 
@@ -1840,7 +1842,12 @@
             if (data.name) document.getElementById('passModalName').innerText = data.name;
             if (data.color) document.getElementById('passModalColor').innerText = data.color;
             if (data.size) document.getElementById('passModalSize').innerText = data.size;
-            if (data.stud) document.getElementById('passModalStud').innerHTML = `<span class="stud-badge tf">${data.stud}</span>`;
+            if (data.stud) {
+                const stud = document.createElement('span');
+                stud.className = 'stud-badge tf';
+                stud.textContent = data.stud;
+                document.getElementById('passModalStud').replaceChildren(stud);
+            }
             if (data.order) document.getElementById('passModalOrder').innerText = data.order;
             if (data.warranty) document.getElementById('passModalWarranty').innerText = data.warranty;
 

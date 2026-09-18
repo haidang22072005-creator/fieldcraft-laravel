@@ -33,6 +33,48 @@ class AdminPanelTest extends TestCase
         $this->actingAs($admin)->get(route('admin.accounts.index'))->assertOk()->assertSee($customer->email);
     }
 
+    public function test_kanban_navigation_opens_visual_dashboard_and_json_endpoint_remains_available(): void
+    {
+        $admin = User::factory()->create(['role' => 'admin']);
+        $customer = User::factory()->create(['role' => 'customer']);
+        $order = $this->order($customer, 'pending');
+
+        $this->actingAs($admin)
+            ->get(route('admin.dashboard'))
+            ->assertOk()
+            ->assertSee(route('admin.dashboard', ['tab' => 'kanban']).'#kanban', false)
+            ->assertDontSee('href="'.route('admin.orders.kanban').'#kanban"', false);
+
+        $this->actingAs($admin)
+            ->getJson(route('admin.orders.kanban'))
+            ->assertOk()
+            ->assertJsonPath('data.pending.0.id', $order->id);
+    }
+
+    public function test_admin_support_payload_does_not_emit_raw_customer_markup(): void
+    {
+        $admin = User::factory()->create(['role' => 'admin']);
+        $customer = User::factory()->create(['role' => 'customer']);
+        $ticket = \App\Models\SupportTicket::create([
+            'user_id' => $customer->id,
+            'subject' => '<script>alert("subject")</script>',
+            'category' => 'other',
+            'status' => 'open',
+            'last_message_at' => now(),
+        ]);
+        $ticket->messages()->create([
+            'sender_user_id' => $customer->id,
+            'sender_role' => 'customer',
+            'message' => '<img src=x onerror=alert("message")>',
+        ]);
+
+        $this->actingAs($admin)
+            ->get(route('admin.dashboard'))
+            ->assertOk()
+            ->assertDontSee('<script>alert("subject")</script>', false)
+            ->assertDontSee('<img src=x onerror=alert("message")>', false);
+    }
+
     public function test_only_super_admin_can_manage_staff_and_password_is_hashed(): void
     {
         $superAdmin = User::factory()->create(['role' => 'super-admin']);

@@ -194,7 +194,7 @@
     </button>
     <button class="dash-tab-btn" data-tab="reviews">
         <span>★ Đánh giá</span>
-        <span class="tab-badge" style="background:var(--bg-panel-sub);color:var(--text-main)">{{ $customer->reviews->count() }}</span>
+        <span class="tab-badge" style="background:var(--bg-panel-sub);color:var(--text-main)">{{ $reviews->count() }}</span>
     </button>
     <button class="dash-tab-btn" data-tab="support">
         <span>🎧 Yêu cầu hỗ trợ</span>
@@ -308,7 +308,7 @@
 <div class="dash-tab-pane" id="pane-orders">
     <section class="panel">
         <div class="toolbar" style="margin-bottom:14px">
-            <span class="toolbar-title">📦 Toàn bộ lịch sử đơn hàng ({{ $orders->count() }})</span>
+            <span class="toolbar-title">📦 Đơn hàng gần đây ({{ $orders->count() }} / {{ $customer360['total_orders'] ?? 0 }})</span>
         </div>
         <div class="table-responsive">
             <table class="table">
@@ -435,7 +435,7 @@
                                 @endif
                             </td>
                             <td class="mono" style="font-size:12px">
-                                {{ $voucher->times_used ?? 0 }} / {{ $voucher->usage_limit ?? '∞' }}
+                                {{ $voucher->used_count ?? 0 }} / {{ $voucher->usage_limit ?? '∞' }}
                             </td>
                             <td>
                                 @if($voucher->is_active)
@@ -463,7 +463,7 @@
 <div class="dash-tab-pane" id="pane-reviews">
     <section class="panel">
         <div class="toolbar" style="margin-bottom:14px">
-            <span class="toolbar-title">★ Lịch sử đánh giá sản phẩm ({{ $customer->reviews->count() }})</span>
+            <span class="toolbar-title">★ Đánh giá gần đây ({{ $reviews->count() }})</span>
         </div>
         <div class="table-responsive">
             <table class="table">
@@ -478,7 +478,7 @@
                     </tr>
                 </thead>
                 <tbody>
-                    @forelse($customer->reviews as $review)
+                    @forelse($reviews as $review)
                         @php
                             $reviewStatusMap = [
                                 'pending' => 'Chờ duyệt',
@@ -568,7 +568,7 @@
                             <td>
                                 <span class="status {{ $ticket->status === 'resolved' || $ticket->status === 'closed' ? 'completed' : 'pending' }}">
                                     {{ match($ticket->status) {
-                                        'open' => 'Mới mở',
+                                        'open' => 'Mới',
                                         'in_progress' => 'Đang xử lý',
                                         'resolved' => 'Đã giải quyết',
                                         'closed' => 'Đã đóng',
@@ -803,7 +803,7 @@
         const btn = document.getElementById('btnSubmitVoucher');
         const errBox = document.getElementById('voucherIssueError');
         errBox.style.display = 'none';
-        errBox.innerHTML = '';
+        errBox.textContent = '';
         btn.disabled = true;
         btn.textContent = 'Đang cấp voucher...';
 
@@ -830,9 +830,9 @@
             if (!res.ok) {
                 let msg = data.message || 'Lỗi cấp voucher.';
                 if (data.errors) {
-                    msg = Object.values(data.errors).flat().join('<br>');
+                    msg = Object.values(data.errors).flat().join('\n');
                 }
-                errBox.innerHTML = msg;
+                errBox.textContent = msg;
                 errBox.style.display = 'block';
                 btn.disabled = false;
                 btn.textContent = 'XÁC NHẬN CẤP VOUCHER';
@@ -841,7 +841,7 @@
             alert('✓ Đã cấp voucher thành công cho khách hàng!');
             window.location.reload();
         } catch (err) {
-            errBox.innerHTML = 'Không thể kết nối máy chủ. Vui lòng thử lại.';
+            errBox.textContent = 'Không thể kết nối máy chủ. Vui lòng thử lại.';
             errBox.style.display = 'block';
             btn.disabled = false;
             btn.textContent = 'XÁC NHẬN CẤP VOUCHER';

@@ -23,7 +23,7 @@ class SupportTicketController extends Controller
 
     public function show(SupportTicket $supportTicket): JsonResponse
     {
-        return response()->json(['data' => $supportTicket->load(['user', 'order', 'messages.sender'])]);
+        return response()->json(['data' => $this->withBoundedMessages($supportTicket)]);
     }
 
     public function reply(Request $request, SupportTicket $supportTicket, AdminNotificationService $notifications, ActivityLogService $activity): JsonResponse
@@ -36,11 +36,20 @@ class SupportTicketController extends Controller
             $ticket->update(['last_message_at' => now(), 'status' => 'in_progress']);
         });
 
-        $fresh = $supportTicket->fresh()->load(['user', 'order', 'messages.sender']);
+        $fresh = $this->withBoundedMessages($supportTicket->fresh());
         $notifications->notifyUserOnce($fresh->user, 'support_admin_message', 'Bạn có phản hồi hỗ trợ mới', $fresh->subject, ['ticket_id' => $fresh->id], $fresh);
         $activity->record('support.message_created', $fresh, ['sender_role' => 'admin'], $request->user()->id);
 
         return response()->json(['data' => $fresh]);
+    }
+
+    private function withBoundedMessages(SupportTicket $ticket): SupportTicket
+    {
+        return $ticket->load([
+            'user',
+            'order',
+            'messages' => fn ($query) => $query->with('sender')->latest()->limit(100),
+        ]);
     }
 
     public function status(Request $request, SupportTicket $supportTicket, ActivityLogService $activity): JsonResponse
